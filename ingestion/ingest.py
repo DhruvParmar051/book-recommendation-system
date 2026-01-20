@@ -6,16 +6,28 @@ import os
 import re
 from pathlib import Path
 
+# =========================
+# CONFIGURATION
+# =========================
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
+
 RAW_CSV_PATH = DATA_DIR / "raw_data" / "Accession Register-Books.csv"
-OUTPUT_JSON_PATH = DATA_DIR / "ingested_data" / "books_raw_enriched.json"
+OUTPUT_JSON_PATH = DATA_DIR / "ingested_data" / "books_enriched.json"
 
 OPENLIBRARY_SEARCH_URL = "https://openlibrary.org/search.json"
-CONCURRENCY_LIMIT = 20
+
+CONCURRENCY_LIMIT = 10
 SAVE_EVERY = 100
 
-def normalize_title(title):
+USER_AGENT = "BookRecommendationSystem/1.0 (academic-use)"
+
+# =========================
+# NORMALIZATION HELPERS
+# =========================
+
+def normalize_title(title: str) -> str | None:
     if not title or pd.isna(title):
         return None
     title = title.lower()
@@ -23,160 +35,177 @@ def normalize_title(title):
     title = re.sub(r"\s+", " ", title).strip()
     return title
 
-def clean_isbn(isbn):
-    if pd.isna(isbn):
+def clean_isbn(isbn) -> str | None:
+    if not isbn or pd.isna(isbn):
         return None
-    isbn = str(isbn)
-    if "e+" in isbn.lower():
-        return None
-    isbn = isbn.replace(".0", "")
+    isbn = str(isbn).replace(".0", "")
     isbn = re.sub(r"[^0-9Xx]", "", isbn).upper()
     if len(isbn) in (10, 13):
         return isbn
     return None
 
-async def search_openlibrary_async(session, params):
+def make_book_key(isbn, title):
+    return f"{isbn}|{normalize_title(title)}"
+
+# =========================
+# OPENLIBRARY SEARCH
+# =========================
+
+async def search_openlibrary(session, params):
+    headers = {"User-Agent": USER_AGENT}
     try:
-        headers = {"User-Agent": "BookRecommendationSystem/1.0"}
-        async with session.get(OPENLIBRARY_SEARCH_URL, params=params, headers=headers) as response:
-            if response.status == 200:
-                data = await response.json()
+        async with session.get(
+            OPENLIBRARY_SEARCH_URL,
+            params=params,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
                 if data.get("numFound", 0) > 0:
                     return data["docs"][0]
     except Exception:
         pass
     return None
 
-async def fetch_book_details_smart_async(session, title, author):
-    res = await search_openlibrary_async(
-        session, {"title": title, "author": author, "limit": 1}
-    )
-    if res:
-        return res, "Strict match"
-
-    if ":" in title:
-        short_title = title.split(":")[0].strip()
-        res = await search_openlibrary_async(
-            session, {"title": short_title, "author": author, "limit": 1}
+async def fetch_book(session, title, author=None):
+    # 1. Strict title + author
+    if author:
+        res = await search_openlibrary(
+            session, {"title": title, "author": author, "limit": 1}
         )
         if res:
-            return res, "Short title + author"
+            return res, "Strict match"
 
-    res = await search_openlibrary_async(
+    # 2. Short title
+    if ":" in title:
+        short = title.split(":")[0].strip()
+        res = await search_openlibrary(
+            session, {"title": short, "limit": 1}
+        )
+        if res:
+            return res, "Short title match"
+
+    # 3. Title only
+    res = await search_openlibrary(
         session, {"title": title, "limit": 1}
     )
     if res:
-        return res, "Title-only"
+        return res, "Title-only match"
 
-    return None, "Not found"
+    return None, None
 
-enriched_books = []
-processed_book_keys = set()
-processed_count = 0
+# =========================
+# FILE HANDLING
+# =========================
 
-def load_existing_progress():
-    if not OUTPUT_JSON_PATH.exists():
-        return [], set()
+def load_existing():
+    if OUTPUT_JSON_PATH.exists():
+        with open(OUTPUT_JSON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
-    with open(OUTPUT_JSON_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    rebuilt_keys = set()
-    cleaned_data = []
-
-    for item in data:
-        title = item.get("original_title")
-        isbn = item.get("isbn")
-
-        norm_title = normalize_title(title)
-        if not norm_title:
-            continue
-
-        book_key = item.get("book_key")
-        if not book_key:
-            book_key = f"{isbn}|{norm_title}"
-            item["book_key"] = book_key
-
-        rebuilt_keys.add(book_key)
-        cleaned_data.append(item)
-
-    return cleaned_data, rebuilt_keys
-
-def save_progress():
+def save_atomic(data):
     OUTPUT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = OUTPUT_JSON_PATH.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(enriched_books, f, indent=2)
+        json.dump(data, f, indent=2)
     os.replace(tmp, OUTPUT_JSON_PATH)
 
-async def process_row(session, semaphore, row, index, total):
-    global processed_count
+# =========================
+# PROCESS SINGLE ROW
+# =========================
 
-    title = row.get("Title", "")
-    author = row.get("Author/Editor", "")
-    isbn = clean_isbn(row.get("ISBN"))
-    norm_title = normalize_title(title)
-
-    if not norm_title:
-        return
-
-    book_key = f"{isbn}|{norm_title}"
-
-    if book_key in processed_book_keys:
-        return
-
+async def process_row(session, semaphore, row, total, idx, saved, seen_keys):
     async with semaphore:
-        result, method = await fetch_book_details_smart_async(session, title, author)
+        title = str(row.get("Title", "")).strip()
+        author = str(row.get("Author/Editor", "")).strip()
+        isbn = clean_isbn(row.get("ISBN"))
 
-        if not result:
+        if not title:
             return
 
-        enriched_books.append({
+        book_key = make_book_key(isbn, title)
+
+        if book_key in seen_keys:
+            return
+
+        result, method = await fetch_book(session, title, author)
+
+        status = "FOUND" if result else "MISSING"
+        print(f"[{idx}/{total}] {status} : {title[:50]}")
+
+        if not result:
+            return  #
+
+        saved.append({
             "book_key": book_key,
             "isbn": isbn,
             "original_title": title,
             "original_author": author,
             "api_data": result,
-            "match_method": method,
-            "found": True
+            "match_method": method
         })
 
-        processed_book_keys.add(book_key)
-        processed_count += 1
+        seen_keys.add(book_key)
 
-        print(f"[{index+1}/{total}] FOUND : {title[:50]}")
+        if len(saved) % SAVE_EVERY == 0:
+            save_atomic(saved)
+            print(f"Saved {len(saved)} books")
 
-        if processed_count % SAVE_EVERY == 0:
-            save_progress()
-            print(f"Saved {len(enriched_books)} records")
+        await asyncio.sleep(0.1)
+
+
 
 async def ingest_books_async():
-    global enriched_books, processed_book_keys
-
-    print(f"Reading CSV from {RAW_CSV_PATH}")
+    print(f"Reading CSV: {RAW_CSV_PATH}")
     df = pd.read_csv(RAW_CSV_PATH, encoding="latin1", low_memory=False)
     df.drop_duplicates(subset=["Title", "Author/Editor", "ISBN"], inplace=True)
-    enriched_books, processed_book_keys = load_existing_progress()
+    saved = load_existing()
+    seen_keys = {b["book_key"] for b in saved}
 
-    print(f"Resuming with {len(enriched_books)} books already saved")
+    print(f"Resuming with {len(saved)} books already saved")
     print(f"Starting async ingestion (concurrency={CONCURRENCY_LIMIT})")
 
     semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
     tasks = []
 
     async with aiohttp.ClientSession() as session:
-        for index, row in df.iterrows():
+        for idx, row in df.iterrows():
             tasks.append(
-                process_row(session, semaphore, row, index, len(df))
+                process_row(
+                    session,
+                    semaphore,
+                    row,
+                    len(df),
+                    idx + 1,
+                    saved,
+                    seen_keys
+                )
             )
 
-        await asyncio.gather(*tasks)
+        completed = 0
+        for coro in asyncio.as_completed(tasks):
+            try:
+                await coro
+                completed += 1
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Task error: {e}")
 
-    save_progress()
-    print(f"Ingestion complete. Total books saved: {len(enriched_books)}")
+    save_atomic(saved)
+    print(f"\nIngestion complete. Total books saved: {len(saved)}")
+
+# =========================
+# ENTRY POINT
+# =========================
 
 def main():
-    asyncio.run(ingest_books_async())
+    try:
+        asyncio.run(ingest_books_async())
+    except KeyboardInterrupt:
+        print("\nInterrupted safely. Progress saved.")
 
 if __name__ == "__main__":
     main()
