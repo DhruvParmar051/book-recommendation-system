@@ -1,0 +1,9 @@
+# Data
+data/
+*.csv
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+.env
