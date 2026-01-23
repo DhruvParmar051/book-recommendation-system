@@ -17,34 +17,30 @@ def run_step(name: str, script_path: Path):
         print(f"ERROR: {script_path} not found")
         sys.exit(1)
 
-    result = subprocess.run(
-        [sys.executable, str(script_path)],
-        capture_output=True,
-        text=True
-    )
-
-    if result.stdout:
-        print(result.stdout)
-        
-    
-
-    if result.returncode != 0:
+    try:
+        subprocess.run(
+            [sys.executable, str(script_path)],
+            check=True,
+            encoding="utf-8",
+            errors="ignore"
+        )
+    except subprocess.CalledProcessError as e:
         print("ERROR occurred")
-        print(result.stderr)
         sys.exit(1)
 
-    print(f"COMPLETED: {name}")
+    print(f"COMPLETED: {name}\n")
 
 
 def main():
-    print("BOOK RECOMMENDATION DATA PIPELINE")
+    print("BOOK RECOMMENDATION DATA PIPELINE\n")
 
     run_step("INGESTION", INGESTION_SCRIPT)
     run_step("CLEANING", CLEAN_SCRIPT)
     run_step("TRANSFORMATION (OPAC ENRICHMENT)", TRANSFORMATION_SCRIPT)
 
     print("PIPELINE FINISHED SUCCESSFULLY")
-    print("Final output → data/enriched_data/enriched_book.json")
+    print("Final output → data/enriched_data/enriched_books.json")
+
 
 if __name__ == "__main__":
     main()
