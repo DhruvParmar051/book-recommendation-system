@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent
 INGESTION_SCRIPT = BASE_DIR / r"ingestion\ingestion.py"
 CLEAN_SCRIPT = BASE_DIR / r"clean\clean.py"
 TRANSFORMATION_SCRIPT = BASE_DIR / r"transformation\transformation.py"
-
+STORAGE_SCRIPT = BASE_DIR / r"storage\db.py"
 
 def run_step(name: str, script_path: Path):
     print(f"STARTING: {name}")
@@ -37,10 +37,8 @@ def main():
     run_step("INGESTION", INGESTION_SCRIPT)
     run_step("CLEANING", CLEAN_SCRIPT)
     run_step("TRANSFORMATION (OPAC ENRICHMENT)", TRANSFORMATION_SCRIPT)
-
+    run_step("STORAGE (JSON → SQLITE)", STORAGE_SCRIPT)
     print("PIPELINE FINISHED SUCCESSFULLY")
-    print("Final output → data/enriched_data/enriched_books.json")
-
-
+    print("Final output → data/storage_data/books.sqlite")
 if __name__ == "__main__":
     main()
