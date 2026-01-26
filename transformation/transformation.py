@@ -22,8 +22,8 @@ OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
 
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
 
-MAX_WORKERS = 5              # 🔥 SAFE
-BATCH_SIZE = 200             # 🔥 PREVENTS STALL
+MAX_WORKERS = 5              #  SAFE
+BATCH_SIZE = 200             #  PREVENTS STALL
 SAVE_EVERY = 10
 LOG_EVERY = 100
 
@@ -76,7 +76,7 @@ def query_google_books(session, params):
         return data["items"][0]["volumeInfo"]
 
     except Exception:
-        # 🔥 NEVER let a thread hang
+        #  NEVER let a thread hang
         return None
 
 def search_by_isbn(session, isbn):
@@ -170,10 +170,10 @@ def run_transformation():
     total = len(df)
     remaining = len(remaining_df)
 
-    print("🔁 GOOGLE BOOKS ENRICHMENT STARTED (FREEZE-PROOF)")
-    print(f"✔ Already processed: {len(seen)}")
-    print(f"⏳ Remaining: {remaining}")
-    print(f"🚀 Workers: {MAX_WORKERS}")
+    print(" GOOGLE BOOKS ENRICHMENT STARTED (FREEZE-PROOF)")
+    print(f" Already processed: {len(seen)}")
+    print(f" Remaining: {remaining}")
+    print(f" Workers: {MAX_WORKERS}")
 
     lock = Lock()
     session = requests.Session()
@@ -203,15 +203,15 @@ def run_transformation():
 
                         if len(saved) % SAVE_EVERY == 0:
                             save_atomic(saved)
-                            print(f"💾 Saved {len(saved)} records")
+                            print(f" Saved {len(saved)} records")
 
     except KeyboardInterrupt:
-        print("\n⛔ Interrupted! Saving progress…")
+        print("\n Interrupted! Saving progress…")
         save_atomic(saved)
         return
 
     save_atomic(saved)
-    print(f"✅ COMPLETED. Total processed records: {len(saved)}")
+    print(f" COMPLETED. Total processed records: {len(saved)}")
 
 # ================== ENTRY ==================
 
