@@ -150,7 +150,169 @@ This database becomes the **single source of truth** for the API.
 
 ---
 
-## 6. 📊 Pipeline Statistics & Data Quality Report
+
+## 6. Detailed Stage Explanations
+
+---
+
+### 6.1 Ingestion Stage
+
+**Goal:**  
+Convert raw, inconsistent CSV files into a **canonical schema**.
+
+**Key Design Choices**
+- No cleaning or deduplication (by design)
+- Schema-first approach
+- Fail-safe handling of missing columns
+
+**Why this matters:**  
+Keeps ingestion lightweight and repeatable, deferring complex logic to later stages.
+
+**Default Run**
+
+```
+python ingestion/ingestion.py
+```
+
+**Custom Input / Output**
+
+```
+python ingestion/ingestion.py \
+  --input-dir my_raw_csvs \
+  --output-dir my_ingested_csvs
+```
+
+---
+
+### 6.2 Cleaning Stage
+
+**Goal:**  
+Improve data quality and remove redundancy.
+
+**Operations**
+- Normalize text (lowercase, trim, whitespace fix)
+- Validate ISBNs (10/13-digit)
+- Drop records without titles
+- Deduplicate:
+  - ISBN-based (preferred)
+  - Title + Author fallback
+- Generate stable `record_id` using hashing
+
+**Why this matters:**  
+Downstream enrichment and storage rely on **high-quality, unique records**.
+
+**Default Run**
+
+```
+python clean/clean.py
+```
+
+**Custom Input / Output**
+
+```
+python clean/clean.py \
+  --input-dir data/ingested_data \
+  --output-file output/clean_books.csv
+```
+
+---
+
+### 6.3 Transformation (Enrichment) Stage
+
+**Goal:**  
+Add semantic metadata using Google Books API.
+
+**Enrichment Strategy**
+1. Search by ISBN (highest precision)
+2. Fallback to title + author search
+
+**Reliability Features**
+- Multithreading with controlled concurrency
+- Hard API timeouts
+- Incremental atomic saves
+- Resume-safe after interruption
+
+**Why this matters:**  
+External APIs are unreliable—this design prevents data loss and freezes.
+
+**Default Run**
+
+```
+python transformation/transformation.py
+```
+
+**Custom Input / Output**
+
+```
+python transformation/transformation.py \
+  --input-csv clean.csv \
+  --output-json enriched.json
+```
+
+---
+
+### 6.4 Storage Stage
+
+**Goal:**  
+Persist enriched records in a **query-efficient format**.
+
+**Design Choices**
+- SQLite (simple, portable, zero-config)
+- Fixed schema
+- `INSERT OR IGNORE` to prevent duplicates
+- JSON serialization for list fields
+
+**Why SQLite?**
+- Ideal for small–medium datasets
+- Easy integration with FastAPI
+- No external service required
+
+**Default Run**
+
+```
+python storage/db.py
+```
+
+**Custom Input / Output**
+
+```
+python storage/db.py \
+  --input-json enriched.json \
+  --output-db books.sqlite
+```
+
+---
+
+## 7. FastAPI Service
+
+The FastAPI layer provides **read-only access** to the final dataset.
+
+### Key Endpoints
+
+- `GET /books/` – Paginated book listing  
+- `GET /books/isbn/{isbn}` – ISBN lookup  
+- `GET /search/?q=term` – Full-text search  
+- `POST /sync/` – Trigger pipeline in background  
+
+### Start API Server
+
+```
+uvicorn api.main:app --reload
+```
+
+### Available Endpoints
+
+- `GET /books/`
+- `GET /books/isbn/{isbn}`
+- `GET /search/?q=term`
+- `POST /sync/` – trigger pipeline in background
+
+Swagger UI:
+http://localhost:8000/docs
+
+---
+
+## 8. 📊 Pipeline Statistics & Data Quality Report
 
 This section quantitatively demonstrates **how data quality improves at each stage**.
 All statistics were computed using an independent Jupyter Notebook (`.ipynb`)
@@ -158,7 +320,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.1 Raw Data Statistics (Before ETL)
+### 8.1 Raw Data Statistics (Before ETL)
 
 | Metric | Value |
 |------|------:|
@@ -174,7 +336,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.2 Ingestion Stage Statistics
+### 8.2 Ingestion Stage Statistics
 
 | Metric | Value |
 |------|------:|
@@ -191,7 +353,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.3 Cleaning Stage Statistics
+### 8.3 Cleaning Stage Statistics
 
 | Metric | Value |
 |------|------:|
@@ -215,7 +377,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.4 Enrichment (Google Books API) Statistics
+### 8.4 Enrichment (Google Books API) Statistics
 
 | Metric | Value |
 |------|------:|
@@ -243,7 +405,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.5 Final Dataset Statistics (Post-Storage)
+### 8.5 Final Dataset Statistics (Post-Storage)
 
 | Metric | Value |
 |------|------:|
@@ -258,7 +420,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-### 6.6 Pipeline Row Count Summary
+### 8.6 Pipeline Row Count Summary
 
 | Stage | Rows |
 |------|-----:|
@@ -273,23 +435,7 @@ to keep analysis separate from pipeline logic.
 
 ---
 
-## 7. FastAPI Service
-
-The FastAPI layer provides **read-only access** to the final dataset.
-
-### Key Endpoints
-
-- `GET /books/` – Paginated book listing  
-- `GET /books/isbn/{isbn}` – ISBN lookup  
-- `GET /search/?q=term` – Full-text search  
-- `POST /sync/` – Trigger pipeline in background  
-
-Swagger UI:
-http://localhost:8000/docs
-
----
-
-## 8. Data Dictionary (Core Fields)
+## 9. Data Dictionary (Core Fields)
 
 | Field | Description |
 |------|------------|
@@ -306,7 +452,7 @@ http://localhost:8000/docs
 
 ---
 
-## 9. Design Philosophy
+## 10. Design Philosophy
 
 This project emphasizes:
 
@@ -318,7 +464,7 @@ This project emphasizes:
 
 ---
 
-## 10. Conclusion
+## 11. Conclusion
 
 This project demonstrates a **complete, production-style data pipeline**:
 
