@@ -20,16 +20,6 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-# ================== FIXED PATHS ==================
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-
-CLEAN_CSV = DATA_DIR / "clean_data" / "clean_books.csv"
-OUTPUT_JSON = DATA_DIR / "enriched_data" / "enriched_books.json"
-
-OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-
 # ================== API CONFIG ==================
 
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
@@ -58,18 +48,18 @@ def book_key(isbn, title):
     return f"{isbn}|{title.lower()}"
 
 
-def load_existing():
-    if OUTPUT_JSON.exists():
-        with open(OUTPUT_JSON, "r", encoding="utf-8") as f:
+def load_existing(output_json: Path):
+    if output_json.exists():
+        with open(output_json, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
 
-def save_atomic(data):
-    tmp = OUTPUT_JSON.with_suffix(".tmp")
+def save_atomic(data, output_json: Path):
+    tmp = output_json.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, OUTPUT_JSON)
+    os.replace(tmp, output_json)
 
 # ================== GOOGLE BOOKS ==================
 
@@ -173,10 +163,15 @@ def process_row(row, session):
 
 # ================== MAIN LOGIC ==================
 
-def run_transformation():
-    df = pd.read_csv(CLEAN_CSV)
+def run_transformation(input_csv: Path, output_json: Path):
+    if not input_csv.exists():
+        raise FileNotFoundError(f"Input CSV not found: {input_csv}")
 
-    saved = load_existing()
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+
+    df = pd.read_csv(input_csv)
+
+    saved = load_existing(output_json)
     seen = {r["book_key"] for r in saved}
 
     remaining_df = df[
@@ -193,7 +188,6 @@ def run_transformation():
 
     lock = Lock()
     session = requests.Session()
-
     rows = list(remaining_df.iterrows())
 
     try:
@@ -218,15 +212,15 @@ def run_transformation():
                             print(f"[{len(saved)}/{total}] {result['status']} : {title[:50]}")
 
                         if len(saved) % SAVE_EVERY == 0:
-                            save_atomic(saved)
+                            save_atomic(saved, output_json)
                             print(f"Saved {len(saved)} records")
 
     except KeyboardInterrupt:
         print("\nInterrupted! Saving progress…")
-        save_atomic(saved)
+        save_atomic(saved, output_json)
         return
 
-    save_atomic(saved)
+    save_atomic(saved, output_json)
     print(f"COMPLETED. Total processed records: {len(saved)}")
 
 # ================== CLI ==================
@@ -243,8 +237,7 @@ This is the transformation/enrichment stage of the pipeline.
 
 INPUT
 -----
-- Cleaned CSV:
-  data/clean_data/clean_books.csv
+- Cleaned CSV file
 
 ENRICHMENT PROCESS
 ------------------
@@ -260,19 +253,18 @@ ENRICHMENT PROCESS
    - Subjects
    - Summary
    - Publisher
-5. Process records concurrently (thread-safe)
-6. Save results incrementally to prevent data loss
+5. Process records concurrently
+6. Save results incrementally
 
 OUTPUT
 ------
-- JSON file written to:
-  data/enriched_data/enriched_books.json
+- JSON file containing enriched records
 
 FAILURE HANDLING
 ----------------
-- Missing API results are marked as MISSING
-- Timeouts and API errors are safely ignored
-- Script can resume after interruption
+- Missing API results marked as MISSING
+- Safe retries via resume
+- Interrupt-safe saving
 
 NOT INCLUDED
 ------------
@@ -283,9 +275,25 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.parse_args()  # enables --help
-    run_transformation()
+    parser.add_argument(
+        "--input-csv",
+        type=Path,
+        default=Path("data/clean_data/clean_books.csv"),
+        help="Path to cleaned CSV file (default: data/clean_data/clean_books.csv)"
+    )
+
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=Path("data/enriched_data/enriched_books.json"),
+        help="Path to write enriched JSON (default: data/enriched_data/enriched_books.json)"
+    )
+
+    args = parser.parse_args()
+
+    run_transformation(args.input_csv, args.output_json)
 
 
 if __name__ == "__main__":
     main()
+# ================== END OF SCRIPT ==================

@@ -11,28 +11,23 @@ import json
 import sqlite3
 from pathlib import Path
 
-# ================== FIXED PATHS ==================
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-
-INPUT_JSON = DATA_DIR / "enriched_data" / "enriched_books.json"
-OUTPUT_DB = DATA_DIR / "storage_data" / "books.sqlite"
-
 TABLE_NAME = "books"
-
-OUTPUT_DB.parent.mkdir(parents=True, exist_ok=True)
 
 # ================== MAIN LOGIC ==================
 
-def run_loader():
-    with open(INPUT_JSON, "r", encoding="utf-8") as f:
+def run_loader(input_json: Path, output_db: Path):
+    if not input_json.exists():
+        raise FileNotFoundError(f"Input JSON not found: {input_json}")
+
+    output_db.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(input_json, "r", encoding="utf-8") as f:
         records = json.load(f)
 
     if not records:
         raise ValueError("JSON file is empty")
 
-    conn = sqlite3.connect(OUTPUT_DB)
+    conn = sqlite3.connect(output_db)
     cursor = conn.cursor()
 
     cursor.execute(f"""
@@ -64,7 +59,6 @@ def run_loader():
     """
 
     rows = []
-
     for r in records:
         rows.append((
             r.get("record_id"),
@@ -87,7 +81,7 @@ def run_loader():
     conn.close()
 
     print("JSON → SQLite conversion complete")
-    print(f"Database saved at: {OUTPUT_DB}")
+    print(f"Database saved at: {output_db}")
     print(f"Records inserted: {len(rows)}")
 
 # ================== CLI ==================
@@ -104,8 +98,7 @@ This is the final storage stage of the data pipeline.
 
 INPUT
 -----
-- Enriched JSON file:
-  data/enriched_data/enriched_books.json
+- Enriched JSON file
 
 STORAGE PROCESS
 ---------------
@@ -117,8 +110,7 @@ STORAGE PROCESS
 
 OUTPUT
 ------
-- SQLite database written to:
-  data/storage_data/books.sqlite
+- SQLite database file
 
 DATABASE DETAILS
 ----------------
@@ -136,9 +128,25 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.parse_args()  # enables --help
-    run_loader()
+    parser.add_argument(
+        "--input-json",
+        type=Path,
+        default=Path("data/enriched_data/enriched_books.json"),
+        help="Path to enriched JSON file (default: data/enriched_data/enriched_books.json)"
+    )
+
+    parser.add_argument(
+        "--output-db",
+        type=Path,
+        default=Path("data/storage_data/books.sqlite"),
+        help="Path to output SQLite database (default: data/storage_data/books.sqlite)"
+    )
+
+    args = parser.parse_args()
+
+    run_loader(args.input_json, args.output_db)
 
 
 if __name__ == "__main__":
     main()
+# ================== END OF SCRIPT ==================

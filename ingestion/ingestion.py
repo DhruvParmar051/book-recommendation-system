@@ -12,11 +12,6 @@ import argparse
 import pandas as pd
 from pathlib import Path
 
-# ================== FIXED PATHS ==================
-
-RAW_DATA_DIR = Path("data/raw_data")
-INGESTED_DATA_DIR = Path("data/ingested_data")
-
 # ================== COLUMN MAPPING ==================
 
 COLUMN_MAPPING = {
@@ -39,22 +34,34 @@ def ingest_csv(file_path: Path) -> pd.DataFrame:
     df = pd.read_csv(file_path, encoding="latin1", low_memory=False)
     df = df.rename(columns=COLUMN_MAPPING)
 
+    # Ensure all expected columns exist
     for col in COLUMN_MAPPING.values():
         if col not in df.columns:
             df[col] = None
 
+    # Basic type normalization (not cleaning)
     df["isbn"] = df["isbn"].astype(str).str.strip()
     df["year"] = pd.to_numeric(df["year"], errors="coerce")
 
     return df
 
 
-def run_ingestion() -> None:
-    INGESTED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+def run_ingestion(input_dir: Path, output_dir: Path) -> None:
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Input directory not found: {input_dir}")
 
-    for csv_file in RAW_DATA_DIR.glob("*.csv"):
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_files = list(input_dir.glob("*.csv"))
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        return
+
+    for csv_file in csv_files:
         df = ingest_csv(csv_file)
-        df.to_csv(INGESTED_DATA_DIR / csv_file.name, index=False)
+        df.to_csv(output_dir / csv_file.name, index=False)
+
+    print(f"Ingestion complete. Files written to {output_dir}")
 
 # ================== CLI ==================
 
@@ -70,7 +77,7 @@ This is the ingestion stage of an ETL pipeline.
 
 INPUT
 -----
-- CSV files from: data/raw_data/
+- CSV files from an input directory
 - Columns may be inconsistent or missing
 
 PROCESSING
@@ -82,8 +89,7 @@ PROCESSING
 
 OUTPUT
 ------
-- Standardized CSV files written to:
-  data/ingested_data/
+- Standardized CSV files written to an output directory
 
 NOT INCLUDED
 ------------
@@ -95,9 +101,25 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.parse_args()  # Only for --help
-    run_ingestion()
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=Path("data/raw_data"),
+        help="Directory containing raw CSV files (default: data/raw_data)"
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/ingested_data"),
+        help="Directory to write ingested CSV files (default: data/ingested_data)"
+    )
+
+    args = parser.parse_args()
+
+    run_ingestion(args.input_dir, args.output_dir)
 
 
 if __name__ == "__main__":
     main()
+# ================== END OF SCRIPT ==================

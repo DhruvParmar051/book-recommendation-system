@@ -13,20 +13,6 @@ import re
 import hashlib
 from pathlib import Path
 
-# ================== FIXED PATHS ==================
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-
-INGESTED_DIR = DATA_DIR / "ingested_data"
-CLEAN_DIR = DATA_DIR / "clean_data"
-LOG_DIR = BASE_DIR / "logs"
-
-CLEAN_DIR.mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-OUTPUT_CSV = CLEAN_DIR / "clean_books.csv"
-
 # ================== NORMALIZATION HELPERS ==================
 
 def normalize_text(value):
@@ -63,7 +49,6 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Clean and normalize the ingested DataFrame.
     """
 
-    # Normalize text columns
     TEXT_COLUMNS = [
         "title",
         "author_editor",
@@ -77,14 +62,11 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].apply(normalize_text)
 
-    # Normalize ISBN
     if "isbn" in df.columns:
         df["isbn"] = df["isbn"].apply(normalize_isbn)
 
-    # Drop rows without title
     df = df[df["title"].notna()]
 
-    # Deduplication strategy
     with_isbn = df[df["isbn"].notna()]
     without_isbn = df[df["isbn"].isna()]
 
@@ -95,12 +77,10 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     df = pd.concat([with_isbn, without_isbn], ignore_index=True)
 
-    # Year sanity check
     if "year" in df.columns:
         df["year"] = pd.to_numeric(df["year"], errors="coerce")
         df.loc[(df["year"] < 1500) | (df["year"] > 2035), "year"] = None
 
-    # Stable record identifier
     df["record_id"] = df.apply(make_record_id, axis=1)
 
     return df
@@ -119,7 +99,7 @@ high-quality dataset suitable for analytics or ML.
 
 INPUT
 -----
-- CSV files from: data/ingested_data/
+- CSV files from an input directory
 - Data already standardized by ingestion step
 
 CLEANING OPERATIONS
@@ -135,8 +115,7 @@ CLEANING OPERATIONS
 
 OUTPUT
 ------
-- Single cleaned CSV written to:
-  data/clean_data/clean_books.csv
+- Single cleaned CSV written to an output file
 
 NOT INCLUDED
 ------------
@@ -148,11 +127,28 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.parse_args()  # enables --help
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=Path("data/ingested_data"),
+        help="Directory containing ingested CSV files (default: data/ingested_data)"
+    )
+
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=Path("data/clean_data/clean_books.csv"),
+        help="Path to write cleaned CSV (default: data/clean_data/clean_books.csv)"
+    )
+
+    args = parser.parse_args()
 
     print("Starting cleaning step")
 
-    all_files = list(INGESTED_DIR.glob("*.csv"))
+    if not args.input_dir.exists():
+        raise FileNotFoundError(f"Input directory not found: {args.input_dir}")
+
+    all_files = list(args.input_dir.glob("*.csv"))
     if not all_files:
         print("No ingested CSV files found")
         return
@@ -166,11 +162,15 @@ NOT INCLUDED
     print(f"Loaded {len(combined_df)} ingested rows")
 
     cleaned_df = clean_dataframe(combined_df)
-    cleaned_df.to_csv(OUTPUT_CSV, index=False)
 
-    print(f"Clean data saved to {OUTPUT_CSV}")
+    args.output_file.parent.mkdir(parents=True, exist_ok=True)
+    cleaned_df.to_csv(args.output_file, index=False)
+
+    print(f"Clean data saved to {args.output_file}")
     print(f"Total cleaned rows: {len(cleaned_df)}")
 
 
 if __name__ == "__main__":
     main()
+
+# ================== END OF SCRIPT ==================
