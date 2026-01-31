@@ -48,7 +48,7 @@ This system provides:
 
 Each folder has **one clear responsibility**, mirroring how production pipelines are organized.
 
-@@
+```
 book-recommendation-system/
 │
 ├── api/
@@ -70,7 +70,7 @@ book-recommendation-system/
 │   ├── enriched_data/
 │   └── storage_data/
 └── README.md
-@@
+```
 
 This structure ensures:
 - Clear data lineage
@@ -83,7 +83,7 @@ This structure ensures:
 
 The pipeline is **linear, deterministic, and restartable**.
 
-@@
+```
 ┌──────────────────────┐
 │   Raw CSV Files      │
 │  (Untrusted Input)   │
@@ -128,7 +128,7 @@ The pipeline is **linear, deterministic, and restartable**.
 │ - Search & lookup          │
 │ - Trigger pipeline         │
 └────────────────────────────┘
-@@
+```
 
 ---
 
@@ -136,15 +136,15 @@ The pipeline is **linear, deterministic, and restartable**.
 
 To execute **all ETL stages in order**, run:
 
-@@
+```
 python pipeline/main.py
-@@
+```
 
 ### Final Artifact
 
-@@
+```
 data/storage_data/books.sqlite
-@@
+```
 
 This database becomes the **single source of truth** for the API.
 
