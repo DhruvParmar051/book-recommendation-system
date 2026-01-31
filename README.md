@@ -1,47 +1,56 @@
-# Book Recommendation System  
+# 📚 Book Recommendation System  
 ### ETL Pipeline + Google Books Enrichment + FastAPI Service  
-A complete Data Engineering Project
+**A Complete Data Engineering Project**
 
 ---
 
-# 1. Overview
+## 1. Overview
 
-This project builds a full **data engineering + data serving pipeline** to prepare high-quality book data for a semantic book-recommendation system.
+This project implements a **full end-to-end data engineering pipeline** to prepare high-quality book data for analytics, semantic search, and recommendation systems.
 
-It implements all 4 required steps from the project specification:
+The pipeline is designed to be:
 
-1. **Ingestion** – Load raw CSV files  
-2. **Cleaning** – Normalize & deduplicate  
+- ✅ Deterministic  
+- ✅ Resume-safe  
+- ✅ Scalable  
+- ✅ Self-documenting (every stage supports `--help`)  
+
+### Implemented Stages
+
+1. **Ingestion** – Load and standardize raw CSV files  
+2. **Cleaning** – Normalize text, validate ISBNs, deduplicate  
 3. **Transformation** – Enrich using Google Books API  
-4. **Storage** – Save enriched results to SQLite  
-5. **Serving** – Provide an API using FastAPI
+4. **Storage** – Persist enriched data to SQLite  
+5. **Serving** – Expose data using FastAPI  
 
-The final output is a complete, cleaned, enriched books database and an API to access it.
+**Final Output**
+- Cleaned & enriched SQLite database  
+- REST API for querying books  
 
 ---
 
-# 2. Project Structure
+## 2. Project Structure
 
 ```
 book-recommendation-system/
 │
 ├── api/
-│   └── main.py
+│   └── main.py                  # FastAPI service
 │
 ├── ingestion/
-│   └── ingestion.py
+│   └── ingestion.py             # CSV ingestion stage
 │
 ├── clean/
-│   └── clean.py
+│   └── clean.py                 # Cleaning & deduplication
 │
 ├── transformation/
-│   └── transformation.py
+│   └── transformation.py        # Google Books enrichment
 │
 ├── storage/
-│   └── db.py
+│   └── db.py                    # JSON → SQLite loader
 │
 ├── pipeline/
-│   └── main.py
+│   └── main.py                  # End-to-end pipeline runner
 │
 ├── data/
 │   ├── raw_data/
@@ -56,20 +65,23 @@ book-recommendation-system/
 
 ---
 
-# 3. Installation
+## 3. Installation
 
-### 1. Clone the repository
-```bash
+### 3.1 Clone the Repository
+
+```
 git clone https://github.com/YOUR-USERNAME/book-recommendation-system.git
 cd book-recommendation-system
 ```
 
-### 2️. Install dependencies
+### 3.2 Install Dependencies
+
 ```
 pip install -r requirements.txt
 ```
 
-Requirements:
+**Dependencies**
+
 ```
 pandas
 requests
@@ -80,94 +92,109 @@ python-multipart
 
 ---
 
-# 3. Architecture Diagram
+## 4. Pipeline Architecture
 
 ```
-                   ┌──────────────────┐
-                   │  Raw CSV Files   │
-                   └────────┬─────────┘
-                            │
-                            ▼
-               ┌────────────────────────┐
-               │  INGESTION (CSV → STD) │
-               └────────┬───────────────┘
-                        │
-                        ▼
-          ┌────────────────────────────┐
-          │   CLEANING (Normalize +    │
-          │     Deduplicate + ISBN)    │
-          └──────────┬─────────────────┘
-                     │
-                     ▼
-      ┌──────────────────────────────────┐
-      │ TRANSFORMATION (Google Books API │
-      │     Enrichment: authors, desc)   │
-      └──────────────┬──────────────────┘
-                     │
-                     ▼
-     ┌──────────────────────────────────┐
-     │ STORAGE (JSON → SQLite Database) │
-     └─────────────────┬────────────────┘
-                       │
-                       ▼
-            ┌─────────────────────┐
-            │  FASTAPI SERVICE    │
-            │  (books, details)   │
-            └─────────────────────┘
+┌──────────────────────┐
+│   Raw CSV Files      │
+└──────────┬───────────┘
+           │
+           ▼
+┌────────────────────────────┐
+│ INGESTION                  │
+│ - Schema standardization   │
+│ - Column unification       │
+└──────────┬─────────────────┘
+           │
+           ▼
+┌────────────────────────────┐
+│ CLEANING                   │
+│ - Normalize text           │
+│ - Validate ISBN            │
+│ - Deduplicate records      │
+└──────────┬─────────────────┘
+           │
+           ▼
+┌────────────────────────────┐
+│ TRANSFORMATION              │
+│ - Google Books enrichment  │
+│ - Multithreaded + resume   │
+└──────────┬─────────────────┘
+           │
+           ▼
+┌────────────────────────────┐
+│ STORAGE                    │
+│ - JSON → SQLite            │
+└──────────┬─────────────────┘
+           │
+           ▼
+┌────────────────────────────┐
+│ FASTAPI SERVICE            │
+│ - Query books              │
+│ - Serve recommendations    │
+└────────────────────────────┘
 ```
 
 ---
 
-# 4. Running the FULL Pipeline (All Steps)
+## 5. Running the Full Pipeline
 
-Run all ETL stages:
-
-```bash
+```
 python pipeline/main.py
 ```
 
-This runs:
+### What This Does
 
-1. INGESTION  
-2. CLEANING  
-3. TRANSFORMATION  
-4. STORAGE  
+1. Runs **Ingestion**  
+2. Runs **Cleaning**  
+3. Runs **Transformation (Enrichment)**  
+4. Runs **Storage**
 
-Final DB created at:
+### Final Output
 
 ```
 data/storage_data/books.sqlite
 ```
 
+### Execution Guarantees
+
+- Stops immediately on failure  
+- Fixed directory structure  
+- Deterministic execution order  
+- No partial or skipped stages  
+
 ---
 
-# 5. Running the API Server
+## 6. FastAPI Service
 
-Start FastAPI:
+### Start the API Server
 
-```bash
+```
 uvicorn api.main:app --reload
 ```
 
-Visit:
+### Access
 
 - Swagger UI → http://localhost:8000/docs  
-- Root → http://localhost:8000/
+- Root Endpoint → http://localhost:8000/  
 
 ---
 
-# 6. API Documentation
+## 7. API Endpoints
 
-### **GET /**  
-Welcome message
+### GET /
+
+Returns a welcome message.
 
 ---
 
-### **GET /books?limit=10**  
-Get recent books.
+### GET /books?limit=10
 
-**Response example:**
-```json
+Fetch recent books.
+
+**Example Response**
+
+```
 [
   {
     "id": 1,
@@ -180,188 +207,215 @@ Get recent books.
 
 ---
 
-### **GET /books/{book_id}**  
-Fetch a specific book.
+### GET /books/{book_id}
+
+Fetch a single book by ID.
 
 ---
 
-### **POST /sync**  
-Run pipeline in background.
+### POST /sync
 
-**Body:**  
-```json
+Run the pipeline in the background.
+
+**Request Body**
+
+```
 { "sample_size": 5 }
 ```
 
 ---
 
-# 7. Step-by-Step Code Explanation
+## 8. Pipeline Stage Details (Aligned with --help)
+
+### 8.1 Ingestion (`ingestion/ingestion.py`)
+
+**Purpose**
+- Convert raw CSV files into a consistent schema.
+
+**Input**
+- `data/raw_data/*.csv`
+
+**Operations**
+- Rename raw headers using canonical mapping  
+- Ensure all required columns exist  
+- Normalize basic data types (ISBN, Year)  
+
+**Output**
+- `data/ingested_data/*.csv`
+
+**Guarantees**
+- Schema consistency  
+- Safe re-runs  
+- No data loss  
 
 ---
 
-## 7.1 INGESTION (`ingestion/ingestion.py`)
+### 8.2 Cleaning (`clean/clean.py`)
 
- Reads all CSV files from `data/raw_data/`  
- Standardizes headers using `COLUMN_MAPPING`  
- Fixes year & isbn basic types  
- Saves standardized data into `data/ingested_data/`
+**Purpose**
+- Improve data quality and remove duplicates.
+
+**Operations**
+- Lowercase and trim text  
+- Normalize ISBN (10/13-digit validation)  
+- Drop rows without title  
+- Deduplicate:
+  - ISBN-based (preferred)
+  - Title + author fallback  
+- Year sanity checks (1500–2035)  
+- Generate stable `record_id` (MD5 hash)
+
+**Output**
+- `data/clean_data/clean_books.csv`
 
 ---
 
-## 7.2 CLEANING (`clean/clean.py`)
+### 8.3 Transformation (`transformation/transformation.py`)
 
- Converts text → lowercase  
- Removes duplicate ISBNs  
- Deduplicates books without ISBN using (title + author)  
- Normalizes ISBN to (10/13-digit valid)  
- Fixes incorrect years (<1500 or >2035 → NULL)  
- Builds a stable `record_id` using MD5 hash  
- Outputs `clean_books.csv`
+**Purpose**
+- Enrich books using Google Books API.
 
----
-
-## 7.3 TRANSFORMATION (`transformation/transformation.py`)
-
- Loads clean CSV  
- Multithreaded Google Books API calls  
- Tries:
-
+**Strategy**
 1. Search by ISBN  
-2. Search by title + author  
+2. Fallback to title + author  
 
- Extracts:
+**Extracted Fields**
+- Authors  
+- Publisher  
+- Published year  
+- Categories (subjects)  
+- Description  
 
-- authors  
-- publisher  
-- published year  
-- categories (subjects)  
-- description  
+**Execution Model**
+- Multithreaded  
+- Hard timeouts (freeze-proof)  
+- Resume-safe  
+- Atomic writes  
 
- Saves enriched JSON into `enriched_books.json`
-
----
-
-## 7.4 STORAGE (`storage/db.py`)
-
- Reads enriched JSON  
- Creates SQLite database  
- Creates `books` table  
- Inserts all enriched rows into the database  
- Saves DB to:
-
-```
-data/storage_data/books.sqlite
-```
+**Output**
+- `data/enriched_data/enriched_books.json`
 
 ---
 
-# 8. Data Dictionary
+### 8.4 Storage (`storage/db.py`)
+
+**Purpose**
+- Persist enriched data into SQLite.
+
+**Operations**
+- Create database if missing  
+- Create `books` table  
+- Serialize lists as JSON strings  
+- Insert using `INSERT OR IGNORE`
+
+**Output**
+- `data/storage_data/books.sqlite`
+
+---
+
+## 9. Data Statistics (Typical Run)
+
+Collected via CLI logs:
+
+- Total raw rows  
+- Rows after cleaning  
+- Duplicate removal count  
+- Enriched records (`FOUND`)  
+- Missing enrichment (`MISSING`)  
+- Final database row count  
+
+---
+
+## 10. Data Dictionary
 
 | Field | Description |
-|-------|-------------|
-| record_id | MD5 hash (stable unique ID) |
-| book_key | Unique composite key (isbn|title) |
+|------|------------|
+| record_id | Stable MD5-based unique ID |
+| book_key | Composite key (`isbn|title`) |
 | status | FOUND / MISSING |
 | accession_no | Library accession number |
 | class_no_book_no | Classification number |
 | pages | Page count |
-| title | Final cleaned title |
-| authors | List of authors from Google Books |
-| isbn | Valid ISBN-10 or ISBN-13 |
+| title | Cleaned book title |
+| authors | JSON list of authors |
+| isbn | Valid ISBN-10 / ISBN-13 |
 | year | Publication year |
-| subjects | Category list |
-| summary | Description |
+| subjects | JSON list of categories |
+| summary | Book description |
 | publisher | Publisher name |
 
 ---
 
-# 9. Database ER Diagram
+## 11. Database Schema
 
 ```
-┌──────────────────────────────────────────────────┐
-│                     books                        │
-├──────────────────────────────────────────────────┤
-│ record_id (TEXT)                                 │
-│ book_key (TEXT)  UNIQUE                          │
-│ status (TEXT)                                    │
-│ accession_no (TEXT)                              │
-│ class_no_book_no (TEXT)                          │
-│ pages (INTEGER)                                  │
-│ title (TEXT)                                     │
-│ authors (JSON TEXT)                              │
-│ isbn (TEXT)                                      │
-│ year (TEXT)                                      │
-│ subjects (JSON TEXT)                             │
-│ summary (TEXT)                                   │
-│ publisher (TEXT)                                 │
-└──────────────────────────────────────────────────┘
+Table: books
+
+record_id        TEXT
+book_key         TEXT UNIQUE
+status           TEXT
+accession_no     TEXT
+class_no_book_no TEXT
+pages            INTEGER
+title            TEXT
+authors          JSON TEXT
+isbn             TEXT
+year             TEXT
+subjects         JSON TEXT
+summary          TEXT
+publisher        TEXT
 ```
 
 ---
 
-# 10. Pipeline Flowchart
+## 12. Pipeline Flowchart
 
 ```
-          +---------------------+
-          |   RAW CSV FILES     |
-          +---------------------+
-                    |
-                    v
-     +--------------------------------+
-     |  ingestion.py                  |
-     |  - rename columns              |
-     |  - unify schema                |
-     +--------------------------------+
-                    |
-                    v
-     +--------------------------------+
-     |   clean.py                     |
-     |  - normalize text              |
-     |  - fix isbn                    |
-     |  - remove duplicates           |
-     +--------------------------------+
-                    |
-                    v
-     +--------------------------------+
-     | transformation.py              |
-     | - Google Books API lookup      |
-     | - extract authors/summary      |
-     +--------------------------------+
-                    |
-                    v
-     +--------------------------------+
-     |       db.py                    |
-     |   JSON → SQLite database       |
-     +--------------------------------+
+RAW CSV
+  |
+  v
+ingestion.py
+  |
+  v
+clean.py
+  |
+  v
+transformation.py
+  |
+  v
+db.py
+  |
+  v
+SQLite Database
 ```
 
 ---
 
-# 11. Future Enhancements
+## 13. Future Enhancements
 
-- Add embeddings using Sentence Transformers  
-- Add FAISS or Qdrant vector search  
-- Recommend similar books  
-- Add caching for Google API  
-- Convert pipeline into Airflow DAG  
-- Add Dockerfile  
-- Add unit tests for each pipeline stage  
-
----
-
-# 12. Conclusion
-
-This project provides:
-
- A complete ETL pipeline  
- Property-normalized dataset  
- Book enrichment using Google APIs  
- SQLite database output  
- FastAPI service to serve books  
-
-You're now ready to build **semantic search** and **LLM-powered recommendation systems** on top of this.
+- Sentence Transformer embeddings  
+- FAISS / Qdrant vector search  
+- Semantic similarity recommendations  
+- Google API caching  
+- Airflow DAG  
+- Dockerization  
+- Unit & integration tests  
+- Data quality dashboards  
 
 ---
 
-#  Enjoy your project , All the best!
+## 14. Conclusion
 
+This project delivers:
+
+- ✅ Complete ETL pipeline  
+- ✅ Resume-safe enrichment  
+- ✅ Production-grade SQLite storage  
+- ✅ Self-documenting CLI tools  
+- ✅ FastAPI-based data serving  
+
+You are now ready to build **semantic search** and **LLM-powered recommendation systems** on top of this pipeline.
+
+---
+
+🎉 **Enjoy your project — all the best!**
