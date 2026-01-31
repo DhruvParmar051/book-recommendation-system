@@ -1,7 +1,19 @@
+"""
+CSV Cleaning Script
+
+This script performs the cleaning stage of a data pipeline.
+It takes ingested CSV files, normalizes text fields, validates ISBNs,
+removes duplicates, applies sanity checks, and produces a single
+cleaned dataset ready for downstream use.
+"""
+
+import argparse
 import pandas as pd
 import re
 import hashlib
 from pathlib import Path
+
+# ================== FIXED PATHS ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -15,6 +27,8 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_CSV = CLEAN_DIR / "clean_books.csv"
 
+# ================== NORMALIZATION HELPERS ==================
+
 def normalize_text(value):
     if pd.isna(value):
         return None
@@ -22,14 +36,17 @@ def normalize_text(value):
     value = re.sub(r"\s+", " ", value)
     return value
 
+
 def normalize_isbn(value):
     if pd.isna(value):
         return None
     isbn = re.sub(r"[^0-9Xx]", "", str(value)).upper()
     return isbn if len(isbn) in (10, 13) else None
 
+
 def safe_str(value):
     return "" if pd.isna(value) else str(value)
+
 
 def make_record_id(row):
     key = (
@@ -39,9 +56,12 @@ def make_record_id(row):
     )
     return hashlib.md5(key.encode("utf-8")).hexdigest()
 
-
+# ================== CLEANING LOGIC ==================
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean and normalize the ingested DataFrame.
+    """
 
     # Normalize text columns
     TEXT_COLUMNS = [
@@ -62,12 +82,9 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df["isbn"] = df["isbn"].apply(normalize_isbn)
 
     # Drop rows without title
-    before = len(df)
     df = df[df["title"].notna()]
-    
 
-    before = len(df)
-
+    # Deduplication strategy
     with_isbn = df[df["isbn"].notna()]
     without_isbn = df[df["isbn"].isna()]
 
@@ -78,20 +95,61 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     df = pd.concat([with_isbn, without_isbn], ignore_index=True)
 
-
-    # Year sanity
+    # Year sanity check
     if "year" in df.columns:
         df["year"] = pd.to_numeric(df["year"], errors="coerce")
         df.loc[(df["year"] < 1500) | (df["year"] > 2035), "year"] = None
 
-    # Stable record_id
+    # Stable record identifier
     df["record_id"] = df.apply(make_record_id, axis=1)
 
     return df
 
-
+# ================== CLI ==================
 
 def main():
+    parser = argparse.ArgumentParser(
+        description=
+"""CSV CLEANING SCRIPT
+
+PURPOSE
+-------
+Cleans and consolidates ingested CSV data into a single,
+high-quality dataset suitable for analytics or ML.
+
+INPUT
+-----
+- CSV files from: data/ingested_data/
+- Data already standardized by ingestion step
+
+CLEANING OPERATIONS
+-------------------
+1. Normalize text fields (lowercase, trim, whitespace fix)
+2. Normalize and validate ISBN values
+3. Remove rows without titles
+4. Deduplicate records:
+   - Prefer ISBN-based deduplication
+   - Fall back to (title, author) when ISBN is missing
+5. Apply year sanity checks (1500–2035)
+6. Generate stable record_id using hashing
+
+OUTPUT
+------
+- Single cleaned CSV written to:
+  data/clean_data/clean_books.csv
+
+NOT INCLUDED
+------------
+- No external enrichment
+- No fuzzy matching
+- No database insertion
+- No ML feature engineering
+""",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+
+    parser.parse_args()  # enables --help
+
     print("Starting cleaning step")
 
     all_files = list(INGESTED_DIR.glob("*.csv"))
@@ -101,7 +159,6 @@ def main():
 
     dfs = []
     for file in all_files:
-    
         df = pd.read_csv(file, encoding="latin1", low_memory=False)
         dfs.append(df)
 
@@ -111,7 +168,9 @@ def main():
     cleaned_df = clean_dataframe(combined_df)
     cleaned_df.to_csv(OUTPUT_CSV, index=False)
 
-    print(f"Clean data saved to {OUTPUT_CSV}\nTotal cleaned rows: {len(cleaned_df)}")
+    print(f"Clean data saved to {OUTPUT_CSV}")
+    print(f"Total cleaned rows: {len(cleaned_df)}")
+
 
 if __name__ == "__main__":
     main()

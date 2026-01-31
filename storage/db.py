@@ -1,8 +1,17 @@
+"""
+JSON to SQLite Loader Script
+
+This script loads enriched book records from a JSON file
+and stores them into a SQLite database. It represents the
+final storage stage of the data pipeline.
+"""
+
+import argparse
 import json
 import sqlite3
 from pathlib import Path
 
-# ================== CONFIG ==================
+# ================== FIXED PATHS ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -12,66 +21,124 @@ OUTPUT_DB = DATA_DIR / "storage_data" / "books.sqlite"
 
 TABLE_NAME = "books"
 
-with open(INPUT_JSON, "r", encoding="utf-8") as f:
-    records = json.load(f)
+OUTPUT_DB.parent.mkdir(parents=True, exist_ok=True)
 
-if not records:
-    raise ValueError("JSON file is empty")
+# ================== MAIN LOGIC ==================
 
-conn = sqlite3.connect(OUTPUT_DB)
-cursor = conn.cursor()
+def run_loader():
+    with open(INPUT_JSON, "r", encoding="utf-8") as f:
+        records = json.load(f)
 
-cursor.execute(f"""
-CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-    record_id INTEGER,
-    book_key TEXT UNIQUE,
-    status TEXT,
-    accession_no TEXT,
-    class_no_book_no TEXT,
-    pages INTEGER,
-    title TEXT,
-    authors TEXT,
-    isbn TEXT,
-    year TEXT,
-    subjects TEXT,
-    summary TEXT,
-    publisher TEXT
-);
-""")
+    if not records:
+        raise ValueError("JSON file is empty")
 
-insert_sql = f"""
-INSERT OR IGNORE INTO {TABLE_NAME} (
-    record_id, book_key, status,
-    accession_no, class_no_book_no, pages,
-    title, authors, isbn, year,
-    subjects, summary, publisher
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-"""
+    conn = sqlite3.connect(OUTPUT_DB)
+    cursor = conn.cursor()
 
-rows = []
+    cursor.execute(f"""
+    CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+        record_id TEXT,
+        book_key TEXT UNIQUE,
+        status TEXT,
+        accession_no TEXT,
+        class_no_book_no TEXT,
+        pages INTEGER,
+        title TEXT,
+        authors TEXT,
+        isbn TEXT,
+        year TEXT,
+        subjects TEXT,
+        summary TEXT,
+        publisher TEXT
+    );
+    """)
 
-for r in records:
-    rows.append((
-        r.get("record_id"),
-        r.get("book_key"),
-        r.get("status"),
-        r.get("accession_no"),
-        r.get("class_no_book_no"),
-        r.get("pages"),
-        r.get("title"),
-        json.dumps(r.get("authors"), ensure_ascii=False),
-        r.get("isbn"),
-        r.get("year"),
-        json.dumps(r.get("subjects"), ensure_ascii=False),
-        r.get("summary"),
-        r.get("publisher"),
-    ))
+    insert_sql = f"""
+    INSERT OR IGNORE INTO {TABLE_NAME} (
+        record_id, book_key, status,
+        accession_no, class_no_book_no, pages,
+        title, authors, isbn, year,
+        subjects, summary, publisher
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    """
 
-cursor.executemany(insert_sql, rows)
-conn.commit()
-conn.close()
+    rows = []
 
-print(f"JSON → SQLite conversion complete")
-print(f"Database saved at: {OUTPUT_DB}")
-print(f"Records inserted: {len(rows)}")
+    for r in records:
+        rows.append((
+            r.get("record_id"),
+            r.get("book_key"),
+            r.get("status"),
+            r.get("accession_no"),
+            r.get("class_no_book_no"),
+            r.get("pages"),
+            r.get("title"),
+            json.dumps(r.get("authors"), ensure_ascii=False),
+            r.get("isbn"),
+            r.get("year"),
+            json.dumps(r.get("subjects"), ensure_ascii=False),
+            r.get("summary"),
+            r.get("publisher"),
+        ))
+
+    cursor.executemany(insert_sql, rows)
+    conn.commit()
+    conn.close()
+
+    print("JSON → SQLite conversion complete")
+    print(f"Database saved at: {OUTPUT_DB}")
+    print(f"Records inserted: {len(rows)}")
+
+# ================== CLI ==================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=
+"""JSON TO SQLITE LOADER SCRIPT
+
+PURPOSE
+-------
+Loads enriched book records from a JSON file into a SQLite database.
+This is the final storage stage of the data pipeline.
+
+INPUT
+-----
+- Enriched JSON file:
+  data/enriched_data/enriched_books.json
+
+STORAGE PROCESS
+---------------
+1. Load enriched book records from JSON
+2. Create SQLite database if it does not exist
+3. Create books table with fixed schema
+4. Insert records safely using INSERT OR IGNORE
+5. Serialize list fields (authors, subjects) as JSON strings
+
+OUTPUT
+------
+- SQLite database written to:
+  data/storage_data/books.sqlite
+
+DATABASE DETAILS
+----------------
+- Table name: books
+- Unique constraint on book_key
+- Duplicate records are ignored safely
+
+NOT INCLUDED
+------------
+- No schema migration
+- No updates to existing records
+- No indexing
+- No external database usage
+""",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+
+    parser.parse_args()  # enables --help
+    run_loader()
+
+
+if __name__ == "__main__":
+    main()

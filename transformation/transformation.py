@@ -1,6 +1,16 @@
+"""
+CSV Enrichment Script
+
+This script performs the enrichment stage of a data pipeline.
+It takes cleaned book records and enriches them using the
+Google Books API to fetch metadata such as authors, subjects,
+publisher, and summaries.
+"""
+
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
+import argparse
 import pandas as pd
 import requests
 import json
@@ -10,7 +20,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-# ================== CONFIG ==================
+# ================== FIXED PATHS ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -20,14 +30,15 @@ OUTPUT_JSON = DATA_DIR / "enriched_data" / "enriched_books.json"
 
 OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
 
+# ================== API CONFIG ==================
+
 GOOGLE_BOOKS_API = "https://www.googleapis.com/books/v1/volumes"
 
-MAX_WORKERS = 5              #  SAFE
-BATCH_SIZE = 200             #  PREVENTS STALL
+MAX_WORKERS = 5
+BATCH_SIZE = 200
 SAVE_EVERY = 10
 LOG_EVERY = 100
 
-# HARD timeouts (connect, read)
 TIMEOUT = (2, 2)
 
 HEADERS = {
@@ -41,15 +52,18 @@ def clean_text(text):
         return None
     return re.sub(r"\s+", " ", str(text).strip())
 
+
 def book_key(isbn, title):
     isbn = isbn or "NOISBN"
     return f"{isbn}|{title.lower()}"
+
 
 def load_existing():
     if OUTPUT_JSON.exists():
         with open(OUTPUT_JSON, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
+
 
 def save_atomic(data):
     tmp = OUTPUT_JSON.with_suffix(".tmp")
@@ -76,18 +90,20 @@ def query_google_books(session, params):
         return data["items"][0]["volumeInfo"]
 
     except Exception:
-        #  NEVER let a thread hang
         return None
+
 
 def search_by_isbn(session, isbn):
     isbn = re.sub(r"[^0-9Xx]", "", str(isbn))
     return query_google_books(session, {"q": f"isbn:{isbn}"})
+
 
 def search_by_title_author(session, title, author):
     q = title
     if author:
         q += f"+inauthor:{author}"
     return query_google_books(session, {"q": q})
+
 
 def extract_book_info(info):
     return {
@@ -155,7 +171,7 @@ def process_row(row, session):
         "publisher": book["publisher"],
     }
 
-# ================== MAIN ==================
+# ================== MAIN LOGIC ==================
 
 def run_transformation():
     df = pd.read_csv(CLEAN_CSV)
@@ -170,10 +186,10 @@ def run_transformation():
     total = len(df)
     remaining = len(remaining_df)
 
-    print(" GOOGLE BOOKS ENRICHMENT STARTED (FREEZE-PROOF)")
-    print(f" Already processed: {len(seen)}")
-    print(f" Remaining: {remaining}")
-    print(f" Workers: {MAX_WORKERS}")
+    print("GOOGLE BOOKS ENRICHMENT STARTED")
+    print(f"Already processed: {len(seen)}")
+    print(f"Remaining: {remaining}")
+    print(f"Workers: {MAX_WORKERS}")
 
     lock = Lock()
     session = requests.Session()
@@ -203,20 +219,73 @@ def run_transformation():
 
                         if len(saved) % SAVE_EVERY == 0:
                             save_atomic(saved)
-                            print(f" Saved {len(saved)} records")
+                            print(f"Saved {len(saved)} records")
 
     except KeyboardInterrupt:
-        print("\n Interrupted! Saving progress…")
+        print("\nInterrupted! Saving progress…")
         save_atomic(saved)
         return
 
     save_atomic(saved)
-    print(f" COMPLETED. Total processed records: {len(saved)}")
+    print(f"COMPLETED. Total processed records: {len(saved)}")
 
-# ================== ENTRY ==================
+# ================== CLI ==================
 
 def main():
+    parser = argparse.ArgumentParser(
+        description=
+"""CSV ENRICHMENT SCRIPT (GOOGLE BOOKS API)
+
+PURPOSE
+-------
+Enrich cleaned book records with metadata from Google Books API.
+This is the transformation/enrichment stage of the pipeline.
+
+INPUT
+-----
+- Cleaned CSV:
+  data/clean_data/clean_books.csv
+
+ENRICHMENT PROCESS
+------------------
+1. Load cleaned book records
+2. Skip already-enriched books (resume-safe)
+3. Query Google Books API using:
+   - ISBN (preferred)
+   - Title + Author (fallback)
+4. Fetch metadata:
+   - Authors
+   - ISBN
+   - Published year
+   - Subjects
+   - Summary
+   - Publisher
+5. Process records concurrently (thread-safe)
+6. Save results incrementally to prevent data loss
+
+OUTPUT
+------
+- JSON file written to:
+  data/enriched_data/enriched_books.json
+
+FAILURE HANDLING
+----------------
+- Missing API results are marked as MISSING
+- Timeouts and API errors are safely ignored
+- Script can resume after interruption
+
+NOT INCLUDED
+------------
+- No paid API usage
+- No database insertion
+- No recommendation logic
+""",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+
+    parser.parse_args()  # enables --help
     run_transformation()
+
 
 if __name__ == "__main__":
     main()
