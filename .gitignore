@@ -4,6 +4,7 @@ data/
 *.db
 *.sqlite3
 
+.ipynb
 # Python
 __pycache__/
 .env

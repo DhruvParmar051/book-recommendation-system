@@ -104,14 +104,14 @@ NOT INCLUDED
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path("data/raw_data"),
+        default=Path("../data/raw_data"),
         help="Directory containing raw CSV files (default: data/raw_data)"
     )
 
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("data/ingested_data"),
+        default=Path("../data/ingested_data"),
         help="Directory to write ingested CSV files (default: data/ingested_data)"
     )
 

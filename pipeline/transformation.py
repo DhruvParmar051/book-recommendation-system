@@ -278,14 +278,14 @@ NOT INCLUDED
     parser.add_argument(
         "--input-csv",
         type=Path,
-        default=Path("data/clean_data/clean_books.csv"),
+        default=Path("../data/clean_data/clean_books.csv"),
         help="Path to cleaned CSV file (default: data/clean_data/clean_books.csv)"
     )
 
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path("data/enriched_data/enriched_books.json"),
+        default=Path("../data/enriched_data/enriched_books.json"),
         help="Path to write enriched JSON (default: data/enriched_data/enriched_books.json)"
     )
 

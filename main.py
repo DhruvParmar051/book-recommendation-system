@@ -15,9 +15,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-INGESTION_SCRIPT = BASE_DIR / "ingestion" / "ingestion.py"
-CLEAN_SCRIPT = BASE_DIR / "clean" / "clean.py"
-TRANSFORMATION_SCRIPT = BASE_DIR / "transformation" / "transformation.py"
+INGESTION_SCRIPT = BASE_DIR / "pipeline" / "ingestion.py"
+CLEAN_SCRIPT = BASE_DIR / "pipeline" / "clean.py"
+TRANSFORMATION_SCRIPT = BASE_DIR / "pipeline" / "transformation.py"
 STORAGE_SCRIPT = BASE_DIR / "storage" / "db.py"
 
 # ================== PIPELINE EXECUTION ==================
