@@ -126,18 +126,21 @@ NOT INCLUDED
 """,
         formatter_class=argparse.RawTextHelpFormatter
     )
+    
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path("../data/ingested_data"),
+        default=PROJECT_ROOT / "data/ingested_data",
         help="Directory containing ingested CSV files (default: data/ingested_data)"
     )
 
     parser.add_argument(
         "--output-file",
         type=Path,
-        default=Path("../data/clean_data/clean_books.csv"),
+        default=PROJECT_ROOT / "data/clean_data/clean_books.csv",
         help="Path to write cleaned CSV (default: data/clean_data/clean_books.csv)"
     )
 

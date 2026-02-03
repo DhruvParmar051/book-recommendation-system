@@ -1,4 +1,4 @@
-# 📚 Book Recommendation System  
+# Book Recommendation System  
 ## End-to-End Data Engineering Pipeline
 
 This project implements a **modular, multi-stage data pipeline** for building a Book Recommendation System.  
@@ -8,7 +8,7 @@ The entire pipeline is orchestrated through a single entry point (`main.py`), en
 
 ---
 
-## 🎯 Project Objective
+## Project Objective
 
 The primary goal of this project is to convert **raw, unstructured, and incomplete book metadata** into a **clean, enriched, and query-ready dataset** that can be used for:
 
@@ -19,7 +19,7 @@ The primary goal of this project is to convert **raw, unstructured, and incomple
 
 ---
 
-## 🏗️ Pipeline Overview
+## Pipeline Overview
 
 The pipeline consists of **four major phases**, executed sequentially:
 
@@ -32,7 +32,7 @@ Each phase is implemented as an **independent Python module** and executed using
 
 ---
 
-## 🟡 Phase 1: Ingestion
+## Phase 1: Ingestion
 
 ### Purpose
 
@@ -53,7 +53,7 @@ No semantic cleaning or deduplication is performed at this stage.
 
 ---
 
-## 🟠 Phase 2: Cleaning
+## Phase 2: Cleaning
 
 ### Purpose
 
@@ -76,7 +76,7 @@ Cleaning is intentionally separated from ingestion to:
 
 ---
 
-## 🔵 Phase 3: Transformation (OPAC Enrichment)
+## Phase 3: Transformation (OPAC Enrichment)
 
 ### Purpose
 The transformation phase enriches the cleaned data using **external library metadata sources**, such as OPAC or catalog systems.
@@ -94,7 +94,7 @@ Any enrichment failures are handled gracefully to keep the pipeline resilient.
 
 ---
 
-## 🔴 Phase 4: Storage (JSON → SQLite)
+## Phase 4: Storage (JSON → SQLite)
 
 ### Purpose
 The storage phase persists the final processed dataset into a **relational database**.
@@ -112,9 +112,9 @@ SQLite is chosen for:
 
 ---
 
-## ⚙️ Pipeline Orchestration
+## Pipeline Orchestration
 
-The pipeline is orchestrated using a **central controller script** (`main.py`), which:
+The pipeline is orchestrated using a **central controller script** (`pipeline_runner.py`), which:
 
 - Executes each phase in strict order
 - Uses subprocess isolation for each stage
@@ -128,7 +128,7 @@ This orchestration ensures:
 
 ---
 
-## 📁 Logical Project Structure
+## Logical Project Structure
 
 The project follows a clean, phase-oriented structure:
 
@@ -142,7 +142,7 @@ This structure mirrors **real-world ETL pipelines** used in production systems.
 
 ---
 
-## 🎓 Academic Perspective
+## Academic Perspective
 
 This project demonstrates:
 - Proper separation of concerns
@@ -153,7 +153,7 @@ This project demonstrates:
 It clearly distinguishes between **ingestion**, **cleaning**, and **transformation**, which is a key expectation in Big Data Engineering evaluations.
 ---
 
-## 🚀 Future Enhancements
+## Future Enhancements
 
 - Recommendation algorithms (content-based / collaborative filtering)
 - REST API for serving recommendations
@@ -164,7 +164,7 @@ It clearly distinguishes between **ingestion**, **cleaning**, and **transformati
 
 ---
 
-## 🏁 Final Outcome
+## Final Outcome
 
 The Book Recommendation System pipeline successfully transforms raw book records into a **clean, enriched, and persistent dataset**.  
 It forms a strong foundation for intelligent recommendation systems and scalable data-driven applications.

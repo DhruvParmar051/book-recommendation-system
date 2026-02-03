@@ -161,9 +161,28 @@ def process_row(row, session):
         "publisher": book["publisher"],
     }
 
+# ================== JSON → CSV EXPORT (NEW) ==================
+
+def export_csv(output_json: Path, output_csv: Path):
+    with open(output_json, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    df = pd.DataFrame(data)
+
+    for col in ["authors", "subjects"]:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: ", ".join(x) if isinstance(x, list) else None
+            )
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False, encoding="utf-8")
+
+    print(f"CSV snapshot written → {output_csv}")
+
 # ================== MAIN LOGIC ==================
 
-def run_transformation(input_csv: Path, output_json: Path):
+def run_transformation(input_csv: Path, output_json: Path, output_csv: Path | None):
     if not input_csv.exists():
         raise FileNotFoundError(f"Input CSV not found: {input_csv}")
 
@@ -213,7 +232,6 @@ def run_transformation(input_csv: Path, output_json: Path):
 
                         if len(saved) % SAVE_EVERY == 0:
                             save_atomic(saved, output_json)
-                            print(f"Saved {len(saved)} records")
 
     except KeyboardInterrupt:
         print("\nInterrupted! Saving progress…")
@@ -222,6 +240,10 @@ def run_transformation(input_csv: Path, output_json: Path):
 
     save_atomic(saved, output_json)
     print(f"COMPLETED. Total processed records: {len(saved)}")
+
+    # NEW: CSV export after successful enrichment
+    if output_csv:
+        export_csv(output_json, output_csv)
 
 # ================== CLI ==================
 
@@ -275,23 +297,35 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
     parser.add_argument(
         "--input-csv",
         type=Path,
-        default=Path("../data/clean_data/clean_books.csv"),
-        help="Path to cleaned CSV file (default: data/clean_data/clean_books.csv)"
+        default=PROJECT_ROOT / "data/clean_data/clean_books.csv"
     )
 
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path("../data/enriched_data/enriched_books.json"),
-        help="Path to write enriched JSON (default: data/enriched_data/enriched_books.json)"
+        default=PROJECT_ROOT / "data/enriched_data/enriched_books.json"
+    )
+
+    # NEW
+    parser.add_argument(
+        "--output-csv",
+        type=Path,
+        default=PROJECT_ROOT / "data/processed_data/books_features.csv",
+        help="Optional CSV snapshot generated from enriched JSON"
     )
 
     args = parser.parse_args()
 
-    run_transformation(args.input_csv, args.output_json)
+    run_transformation(
+        args.input_csv,
+        args.output_json,
+        args.output_csv
+    )
 
 
 if __name__ == "__main__":
