@@ -1,4 +1,4 @@
-# 📚 Book Recommendation System  
+# Book Recommendation System  
 ### End-to-End ETL Pipeline + Google Books Enrichment + FastAPI Service  
 **A Complete Data Engineering Project**
 
@@ -35,12 +35,12 @@ The project follows **real-world data engineering principles**:
 
 This system provides:
 
-- 📥 Robust ingestion of raw CSV files  
-- 🧹 Data cleaning, normalization, and deduplication  
-- 🌐 External enrichment via Google Books API  
-- 💾 Persistent storage using SQLite  
-- 🚀 FastAPI service for browsing and searching books  
-- 🧪 Fully self-documenting CLI (`--help` on every stage)  
+- Robust ingestion of raw CSV files  
+- Data cleaning, normalization, and deduplication  
+- External enrichment via Google Books API  
+- Persistent storage using SQLite  
+- FastAPI service for browsing and searching books  
+- Fully self-documenting CLI (`--help` on every stage)  
 
 ---
 
@@ -52,23 +52,24 @@ Each folder has **one clear responsibility**, mirroring how production pipelines
 book-recommendation-system/
 │
 ├── api/
-│   └── main.py
-├── ingestion/
-│   └── ingestion.py
-├── clean/
-│   └── clean.py
-├── transformation/
-│   └── transformation.py
-├── storage/
-│   └── db.py
-├── pipeline/
-│   └── main.py
+│   └── api.py
 ├── data/
 │   ├── raw_data/
 │   ├── ingested_data/
 │   ├── clean_data/
 │   ├── enriched_data/
 │   └── storage_data/
+├── notebook/
+│   └── data.ipyb
+├── pipeline/
+│   └── clean.py
+│   └── ingestion.py
+│   └── transformation.py
+│   └── pipeline_runner.py
+|   └── json_to_features.py
+├── storage/
+│   └── db.py
+├── recommender/
 └── README.md
 ```
 
@@ -171,13 +172,13 @@ Keeps ingestion lightweight and repeatable, deferring complex logic to later sta
 **Default Run**
 
 ```
-python ingestion/ingestion.py
+python pipeline/ingestion.py
 ```
 
 **Custom Input / Output**
 
 ```
-python ingestion/ingestion.py \
+python pipeline/ingestion.py \
   --input-dir my_raw_csvs \
   --output-dir my_ingested_csvs
 ```
@@ -204,13 +205,13 @@ Downstream enrichment and storage rely on **high-quality, unique records**.
 **Default Run**
 
 ```
-python clean/clean.py
+python pipeline/clean.py
 ```
 
 **Custom Input / Output**
 
 ```
-python clean/clean.py \
+python pipeline/clean.py \
   --input-dir data/ingested_data \
   --output-file output/clean_books.csv
 ```
@@ -238,13 +239,13 @@ External APIs are unreliable—this design prevents data loss and freezes.
 **Default Run**
 
 ```
-python transformation/transformation.py
+python pipeline/transformation.py
 ```
 
 **Custom Input / Output**
 
 ```
-python transformation/transformation.py \
+python pipeline/transformation.py \
   --input-csv clean.csv \
   --output-json enriched.json
 ```
@@ -312,7 +313,7 @@ http://localhost:8000/docs
 
 ---
 
-## 8. 📊 Pipeline Statistics & Data Quality Report
+## 8. Pipeline Statistics & Data Quality Report
 
 This section quantitatively demonstrates **how data quality improves at each stage**.
 All statistics were computed using an independent Jupyter Notebook (`.ipynb`)
@@ -468,14 +469,12 @@ This project emphasizes:
 
 This project demonstrates a **complete, production-style data pipeline**:
 
-- ✅ Quantifiable data-quality improvements  
-- ✅ Deterministic ETL stages  
-- ✅ Resume-safe enrichment  
-- ✅ Persistent storage  
-- ✅ API-based data access  
+- Quantifiable data-quality improvements  
+- Deterministic ETL stages  
+- Resume-safe enrichment  
+- Persistent storage  
+- API-based data access  
 
 It forms a strong foundation for **semantic search and recommendation systems**.
 
 ---
-
-🎉 **Excellent work — this README now clearly proves engineering depth and data impact.**
