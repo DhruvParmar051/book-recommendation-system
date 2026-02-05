@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
 from utils.kaggle_loader import download_kaggle_dataset
 
-
 # ======================================================
 # PROJECT SETUP
 # ======================================================
