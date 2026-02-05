@@ -80,6 +80,7 @@ def build_embeddings(
     # Persist artifacts
     with open(output_dir / "book_embeddings.pkl", "wb") as f:
         pickle.dump(embeddings, f)
+        
 
     df[["record_id"]].to_csv(
         output_dir / "embedding_index.csv",
@@ -130,7 +131,7 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--input-csv",

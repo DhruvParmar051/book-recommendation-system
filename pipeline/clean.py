@@ -1,12 +1,3 @@
-"""
-CSV Cleaning Script
-
-This script performs the cleaning stage of a data pipeline.
-It takes ingested CSV files, normalizes text fields, validates ISBNs,
-removes duplicates, applies sanity checks, and produces a single
-cleaned dataset ready for downstream use.
-"""
-
 import argparse
 import pandas as pd
 import re
@@ -89,13 +80,12 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser(
-        description=
-"""CSV CLEANING SCRIPT
+        description="""
+CSV CLEANING SCRIPT
 
 PURPOSE
 -------
-Cleans and consolidates ingested CSV data into a single,
-high-quality dataset suitable for analytics or ML.
+Cleans and consolidates ingested CSV data into a single, high-quality dataset suitable for analytics or ML.
 
 INPUT
 -----
@@ -126,21 +116,20 @@ NOT INCLUDED
 """,
         formatter_class=argparse.RawTextHelpFormatter
     )
-    
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=PROJECT_ROOT / "data/ingested_data",
+        default=PROJECT_ROOT / "data" / "ingested_data",
         help="Directory containing ingested CSV files (default: data/ingested_data)"
     )
 
     parser.add_argument(
         "--output-file",
         type=Path,
-        default=PROJECT_ROOT / "data/clean_data/clean_books.csv",
+        default=PROJECT_ROOT / "data" / "clean_data" / "clean_books.csv",
         help="Path to write cleaned CSV (default: data/clean_data/clean_books.csv)"
     )
 

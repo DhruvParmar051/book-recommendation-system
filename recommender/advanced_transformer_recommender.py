@@ -94,11 +94,15 @@ def extract_page_count(pages):
 
 def safe_str(val):
     """
-    Convert NaN → empty string for API safety.
+    Convert NaN → None for API safety.
     """
+    if val is None:
+        return None
     if pd.isna(val):
-        return ""
-    return str(val)
+        return None
+
+    val = str(val).strip()
+    return val if val else None
 
 def safe_col(row, col):
     """
@@ -266,7 +270,7 @@ python recommender/advanced_transformer_recommender.py \
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--input-csv",

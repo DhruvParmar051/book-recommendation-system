@@ -93,7 +93,7 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--embedding-dir",

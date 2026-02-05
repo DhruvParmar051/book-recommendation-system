@@ -22,7 +22,7 @@ from pathlib import Path
 
 # ================== FIXED PROJECT PATHS ==================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 PIPELINE_DIR = PROJECT_ROOT / "pipeline"
 STORAGE_DIR = PROJECT_ROOT / "storage"

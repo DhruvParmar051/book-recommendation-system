@@ -154,19 +154,19 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--input-path",
         type=Path,
-        default=project_root / "data/enriched_data/enriched_books.json",
+        default=project_root / "data" / "enriched_data" / "enriched_books.json",
         help="Path to enriched JSON file (default: data/enriched_data/enriched_books.json)"
     )
 
     parser.add_argument(
         "--output-path",
         type=Path,
-        default=project_root / "data/processed_data/books_features.csv",
+        default=project_root / "data" / "processed_data" / "books_features.csv",
         help="Path to output feature CSV (default: data/processed_data/books_features.csv)"
     )
 

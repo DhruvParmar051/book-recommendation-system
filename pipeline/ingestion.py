@@ -101,20 +101,19 @@ NOT INCLUDED
         formatter_class=argparse.RawTextHelpFormatter
     )
     
-    PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=PROJECT_ROOT / "data/raw_data",
+        default=PROJECT_ROOT / "data" / "raw_data",
         help="Directory containing raw CSV files (default: data/raw_data)"
     )
 
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=PROJECT_ROOT / "data/ingested_data",
+        default=PROJECT_ROOT / "data" / "ingested_data",
         help="Directory to write ingested CSV files (default: data/ingested_data)"
     )
 
