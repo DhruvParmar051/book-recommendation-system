@@ -2,6 +2,7 @@
 FastAPI Book Recommendation Service
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -22,14 +23,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 DB_PATH = PROJECT_ROOT / "data" / "storage_data" / "books.sqlite"
-
-import os
-
-DATA_CSV = os.getenv("BOOKS_FEATURES_CSV")
-EMBED_DIR = os.getenv("EMBEDDINGS_DIR")
-
-if not DATA_CSV or not EMBED_DIR:
-    raise RuntimeError("Missing ML data paths")
 
 
 engine = create_engine(
