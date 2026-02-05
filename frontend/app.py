@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import requests
 import ast
@@ -7,7 +8,12 @@ import math
 # CONFIG
 # ======================================================
 
-API_BASE = "http://127.0.0.1:8000"
+
+API_BASE = os.getenv(
+    "API_BASE_URL",
+    "http://127.0.0.1:8000"  # fallback for local dev
+)
+
 PAGE_SIZE = 5
 RECOMMEND_PAGE_SIZE = 10   # 🔥 pagination size for recommendations
 
