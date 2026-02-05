@@ -108,16 +108,53 @@ app = FastAPI(title="Book Recommendation API", version="1.2.0")
 
 recommender = None
 
+def resolve_ml_paths(project_root: Path):
+    """
+    Resolve ML data paths dynamically.
+    Supports both local-dev and production layouts.
+    """
+
+    candidates = [
+        # ✅ Kaggle-downloaded layout (your current case)
+        {
+            "csv": project_root / "books_features.csv",
+            "emb": project_root / "embeddings",
+        },
+        # ✅ Planned/clean layout
+        {
+            "csv": project_root / "data" / "processed_data" / "books_features.csv",
+            "emb": project_root / "storage" / "embeddings",
+        },
+    ]
+
+    for c in candidates:
+        if c["csv"].exists() and c["emb"].exists():
+            return c["csv"], c["emb"]
+
+    return None, None
+
+
 @app.on_event("startup")
 def load_recommender():
     global recommender
 
-    download_kaggle_dataset()
+    data_csv, embedding_dir = resolve_ml_paths(PROJECT_ROOT)
+
+    if not data_csv or not embedding_dir:
+        print("⚠️ ML files not found. Recommender disabled.")
+        recommender = None
+        return
+
+    from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
 
     recommender = AdvancedTransformerRecommender(
-    data_csv=Path(DATA_CSV),
-    embedding_dir=Path(EMBED_DIR)
+        data_csv=data_csv,
+        embedding_dir=embedding_dir
     )
+
+    print("✅ Recommender loaded successfully")
+
+
 
 
 app.add_middleware(
@@ -129,7 +166,10 @@ app.add_middleware(
 
 @app.get("/")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "recommender_loaded": recommender is not None
+    }
 
 # ======================================================
 # BROWSE + SEARCH BOOKS
@@ -190,8 +230,10 @@ def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
     Semantic book recommendation endpoint.
     """
     if recommender is None:
-        raise HTTPException(status_code=503, detail="Recommender not loaded")
-
+        raise HTTPException(
+            status_code=503,
+            detail="Recommendation engine not available"
+        )
     # Get ranked results from transformer
     df = recommender.recommend(req.query, req.top_k)
 
