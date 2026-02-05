@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, Column, String, Text, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
-from utils.kaggle_loader import download_kaggle_dataset
+from api.utils.kaggle_loader import download_kaggle_dataset
 
 # ======================================================
 # PROJECT SETUP
