@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, Column, String, Text, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
+from utils.kaggle_loader import download_kaggle_dataset
+
 
 # ======================================================
 # PROJECT SETUP
@@ -21,6 +23,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 DB_PATH = PROJECT_ROOT / "data" / "storage_data" / "books.sqlite"
+
+import os
+
+DATA_CSV = os.getenv("BOOKS_FEATURES_CSV")
+EMBED_DIR = os.getenv("EMBEDDINGS_DIR")
+
+if not DATA_CSV or not EMBED_DIR:
+    raise RuntimeError("Missing ML data paths")
+
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -101,9 +112,12 @@ recommender = None
 @app.on_event("startup")
 def load_recommender():
     global recommender
+
+    download_kaggle_dataset()
+
     recommender = AdvancedTransformerRecommender(
-        data_csv=PROJECT_ROOT / "data" / "processed_data" / "books_features.csv",
-        embedding_dir=PROJECT_ROOT / "storage" / "embeddings"
+    data_csv=Path(DATA_CSV),
+    embedding_dir=Path(EMBED_DIR)
     )
 
 
