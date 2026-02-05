@@ -1,32 +1,66 @@
 """
-Advanced Transformer-Based Recommendation Script
+Advanced Transformer-Based Recommendation Engine (FAST VERSION)
 
-This script performs high-performance book recommendation using
-a two-stage transformer architecture:
+This module implements a high-performance, production-style
+book recommendation engine using a layered transformer architecture.
 
-1. Bi-encoder for fast semantic retrieval (ANN via FAISS)
-2. Cross-encoder for precision reranking
-3. Metadata-aware hybrid scoring
+ARCHITECTURE
+------------
+1. Bi-encoder (SentenceTransformer)
+   - Encodes query into dense vector
+   - Uses FAISS for ultra-fast ANN retrieval
 
-This file represents an ADVANCED INFERENCE stage of the
-transformer-based recommendation system.
+2. Cross-encoder (MiniLM)
+   - Reranks top-N candidates precisely
+   - Applied only to a small candidate pool
+
+3. Lightweight hybrid scoring
+   - Metadata-aware adjustments
+   - No heavy pandas loops
+
+PERFORMANCE DESIGN
+------------------
+- Models loaded once
+- Offline-safe (local_files_only=True)
+- Cached embeddings
+- Small rerank pool
+- No recomputation
+
+THIS FILE IS:
+-------------
+✔ Inference-only
+✔ ETL-agnostic
+✔ API-safe
 """
 
-import argparse
+from pathlib import Path
 import pickle
+import re
+
 import faiss
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from sentence_transformers import SentenceTransformer, CrossEncoder
-# ================== MODEL CONFIG ==================
+
+
+# ======================================================
+# MODEL CONFIG
+# ======================================================
 
 BI_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-# ================== LOADERS ==================
+CANDIDATE_POOL = 30   # 🔥 critical for speed
+
+
+# ======================================================
+# FAISS LOADERS
+# ======================================================
 
 def load_faiss_index(embedding_dir: Path):
+    """
+    Load FAISS index + row mapping.
+    """
     index_path = embedding_dir / "faiss.index"
     meta_path = embedding_dir / "index_metadata.pkl"
 
@@ -38,104 +72,196 @@ def load_faiss_index(embedding_dir: Path):
 
     index = faiss.read_index(str(index_path))
     with open(meta_path, "rb") as f:
-        metadata = pickle.load(f)
+        index_map = pickle.load(f)
 
-    return index, metadata
+    return index, index_map
 
-# ================== HYBRID SCORING ==================
+
+# ======================================================
+# HELPER FUNCTIONS
+# ======================================================
 
 def extract_page_count(pages):
+    """
+    Extract numeric page count for depth heuristic.
+    """
     if not isinstance(pages, str):
-        return 0
-    import re
+        return 0.0
+
     m = re.search(r"\d+", pages)
-    return float(m.group()) if m else 0
+    return float(m.group()) if m else 0.0
 
 
-def hybrid_score(df):
-    df = df.copy()
+def safe_str(val):
+    """
+    Convert NaN → empty string for API safety.
+    """
+    if pd.isna(val):
+        return ""
+    return str(val)
 
-    df["depth_score"] = df["pages"].apply(extract_page_count) / 1000.0
+def safe_col(row, col):
+    """
+    Safely read a column from a pandas row.
+    Returns empty string if column is missing or NaN.
+    """
+    if col not in row:
+        return ""
+    val = row[col]
+    if pd.isna(val):
+        return ""
+    return str(val)
 
-    if "summary" in df.columns:
-        df["summary_bonus"] = df["summary"].notna().astype(int)
-    else:
-        df["summary_bonus"] = 0
 
-    df["final_score"] = (
-        0.65 * df["cross_score"]
-        + 0.25 * df["depth_score"]
-        + 0.10 * df["summary_bonus"]
-    )
-
-    return df.sort_values("final_score", ascending=False)
-
-# ================== RECOMMENDATION CORE ==================
+# ======================================================
+# RECOMMENDER CORE
+# ======================================================
 
 class AdvancedTransformerRecommender:
+    """
+    High-performance transformer recommender.
+    """
+
     def __init__(self, data_csv: Path, embedding_dir: Path):
+        # ------------------------------
+        # Load book metadata
+        # ------------------------------
         self.books_df = pd.read_csv(data_csv)
 
-        self.bi_encoder = SentenceTransformer(BI_ENCODER_MODEL)
-        self.cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL)
+        # Clean NaNs once (important for API)
+        self.books_df = self.books_df.fillna("")
 
+        # ------------------------------
+        # Load models (OFFLINE SAFE)
+        # ------------------------------
+        self.bi_encoder = SentenceTransformer(
+            BI_ENCODER_MODEL,
+            local_files_only=True
+        )
+
+        self.cross_encoder = CrossEncoder(
+            CROSS_ENCODER_MODEL,
+            local_files_only=True
+        )
+
+        # ------------------------------
+        # Load FAISS index
+        # ------------------------------
         self.faiss_index, self.index_map = load_faiss_index(embedding_dir)
 
-    def recommend(self, query: str, top_k=5, candidate_pool=100):
-        # ---- Stage 1: Bi-encoder ANN search ----
+        # ------------------------------
+        # Warm-up (prevents slow first call)
+        # ------------------------------
+        self._warmup()
+
+    # --------------------------------------------------
+    # Internal warmup
+    # --------------------------------------------------
+
+    def _warmup(self):
+        _ = self.bi_encoder.encode(
+            ["machine learning"],
+            normalize_embeddings=True
+        )
+
+    # --------------------------------------------------
+    # Recommendation API
+    # --------------------------------------------------
+
+    def recommend(self, query: str, top_k: int = 5) -> pd.DataFrame:
+        """
+        Recommend top-k books for a free-text query.
+        """
+
+        # ------------------------------
+        # Stage 1: Bi-encoder retrieval
+        # ------------------------------
         query_vec = self.bi_encoder.encode(
-            [query], normalize_embeddings=True
+            [query],
+            normalize_embeddings=True
         ).astype("float32")
 
-        scores, indices = self.faiss_index.search(query_vec, candidate_pool)
-        candidate_ids = indices[0]
+        scores, indices = self.faiss_index.search(
+            query_vec,
+            CANDIDATE_POOL
+        )
 
+        candidate_ids = indices[0]
         candidates = self.books_df.iloc[candidate_ids].copy()
 
-        # ---- Stage 2: Cross-encoder reranking ----
+        # ------------------------------
+        # Stage 2: Cross-encoder rerank
+        # ------------------------------
         pairs = [
-        (
-            query,
-            f"{row['title']} {row.get('subjects','')} {row.get('publisher','')}"
-        )
-        for _, row in candidates.iterrows()
-        ]
+    (
+        query,
+        " ".join([
+            safe_col(row, "title"),
+            safe_col(row, "subjects"),
+            safe_col(row, "publisher"),
+            safe_col(row, "authors"),
+        ])
+    )
+    for _, row in candidates.iterrows()
+]
+
 
         cross_scores = self.cross_encoder.predict(pairs)
         candidates["cross_score"] = cross_scores
 
-        # ---- Stage 3: Hybrid metadata reranking ----
-        ranked = hybrid_score(candidates)
+        # ------------------------------
+        # Stage 3: Lightweight hybrid score
+        # ------------------------------
+        candidates["depth_score"] = (
+            candidates["pages"]
+            .apply(extract_page_count)
+            / 1000.0
+        )
 
-        return ranked.head(top_k)
+        candidates["final_score"] = (
+            0.8 * candidates["cross_score"]
+            + 0.2 * candidates["depth_score"]
+        )
 
-# ================== CLI ==================
+        ranked = candidates.sort_values(
+            "final_score",
+            ascending=False
+        )
+
+        # ------------------------------
+        # Final formatting (API-safe)
+        # ------------------------------
+        result = ranked.head(top_k).copy()
+
+        for col in result.columns:
+            result[col] = result[col].apply(safe_str)
+
+        return result
+
+
+# ======================================================
+# CLI (OPTIONAL TESTING)
+# ======================================================
 
 def main():
+    import argparse
+
     parser = argparse.ArgumentParser(
-        description=
-"""ADVANCED TRANSFORMER-BASED BOOK RECOMMENDER
+        description="""
+ADVANCED TRANSFORMER BOOK RECOMMENDER (FAST)
 
 PURPOSE
 -------
-High-performance book recommendation using a
-two-stage transformer architecture.
+High-speed semantic book recommendation using:
+- Transformer bi-encoder
+- FAISS ANN search
+- Cross-encoder reranking
 
-ARCHITECTURE
-------------
-1. Bi-encoder + FAISS for fast retrieval
-2. Cross-encoder for precision reranking
-3. Metadata-aware hybrid scoring
-
-OUTPUT
-------
-- Highly relevant, ranked book recommendations
-
-NOT INCLUDED
-------------
-- No ETL logic
-- No embedding generation
-- No model training
+USAGE
+-----
+python recommender/advanced_transformer_recommender.py \
+    --query "data mining" \
+    --top-k 5
 """,
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -168,23 +294,21 @@ NOT INCLUDED
 
     args = parser.parse_args()
 
-    recommender = AdvancedTransformerRecommender(
+    rec = AdvancedTransformerRecommender(
         data_csv=args.input_csv,
         embedding_dir=args.embedding_dir
     )
 
-    results = recommender.recommend(
-        query=args.query,
-        top_k=args.top_k
-    )
+    results = rec.recommend(args.query, args.top_k)
 
     print("\nRECOMMENDATIONS\n----------------")
     for _, row in results.iterrows():
         print(
-            f"- {row['title']} (score={row['final_score']:.3f})"
+            f"- {row['title']} (score={row['final_score']})"
         )
+
 
 if __name__ == "__main__":
     main()
 
-# ================== END OF SCRIPT ==================
+# ================== END OF FILE ==================
