@@ -63,24 +63,37 @@ def show_field(label, value):
 
 
 def get_books(skip, limit, search_field=None, query=None):
-    params = {"skip": skip, "limit": limit}
-    if search_field and query:
-        params["search_field"] = search_field
-        params["query"] = query
+    try:
+        params = {"skip": skip, "limit": limit}
+        if search_field and query:
+            params["search_field"] = search_field
+            params["query"] = query
 
-    r = requests.get(f"{API_BASE}/books/", params=params, timeout=20)
-    r.raise_for_status()
-    return r.json()
+        r = requests.get(f"{API_BASE}/books/", params=params, timeout=20)
+        r.raise_for_status()
+        return r.json()
+    except requests.RequestException:
+        st.error("❌ Cannot connect to backend API")
+        return {"items": [], "total": 0}
 
 
 def get_recommendations(query, top_k):
-    r = requests.post(
-        f"{API_BASE}/recommend",
-        json={"query": query, "top_k": top_k},
-        timeout=60
-    )
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.post(
+            f"{API_BASE}/recommend",
+            json={"query": query, "top_k": top_k},
+            timeout=60
+        )
+
+        if r.status_code == 503:
+            return {"error": "Recommendation engine is warming up. Please try again in a minute."}
+
+        r.raise_for_status()
+        return r.json()
+
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
 
 
 def get_cover(isbn):
