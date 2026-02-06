@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
+from api.utils.hf_loader import load_books_dataset
 
 # ======================================================
 # PROJECT SETUP
@@ -113,31 +114,41 @@ app.add_middleware(
 # ======================================================
 # LOAD RECOMMENDER (DETERMINISTIC)
 # ======================================================
+HF_DATASET_NAME = "DhruvParmar051/book-recommender-assets"
 
+HF_CACHE_DIR = DATA_DIR / "hf_cache"
+HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 recommender = None
-
 @app.on_event("startup")
 def load_recommender():
     global recommender
 
     try:
-        print("🔍 Checking recommender assets...")
+        print("⬇️ Loading assets from Hugging Face...")
 
-        if not FEATURES_CSV.exists():
-            raise RuntimeError("books_features.csv not found")
-
-        if not (EMBEDDINGS_DIR / "faiss.index").exists():
-            raise RuntimeError("faiss.index not found")
-
-        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
-            raise RuntimeError("index_metadata.pkl not found")
-
-        recommender = AdvancedTransformerRecommender(
-            data_csv=FEATURES_CSV,
-            embedding_dir=EMBEDDINGS_DIR
+        asset_dir = load_books_dataset(
+            dataset_name=HF_DATASET_NAME,
+            cache_dir=HF_CACHE_DIR
         )
 
-        print("✅ Recommender loaded successfully")
+        features_csv = asset_dir / "books_features.csv"
+        embeddings_dir = asset_dir
+
+        if not features_csv.exists():
+            raise RuntimeError("books_features.csv not found in HF dataset")
+
+        if not (embeddings_dir / "faiss.index").exists():
+            raise RuntimeError("faiss.index not found in HF dataset")
+
+        if not (embeddings_dir / "index_metadata.pkl").exists():
+            raise RuntimeError("index_metadata.pkl not found in HF dataset")
+
+        recommender = AdvancedTransformerRecommender(
+            data_csv=features_csv,
+            embedding_dir=embeddings_dir
+        )
+
+        print("🚀 Recommender loaded successfully")
 
     except Exception as e:
         recommender = None
