@@ -29,8 +29,8 @@ DATA_DIR.mkdir(exist_ok=True)
 HF_CACHE_DIR = DATA_DIR / "hf_cache"
 HF_CACHE_DIR.mkdir(exist_ok=True)
 
-FEATURES_CSV = DATA_DIR / "books_features.csv"
-EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+FEATURES_CSV = HF_CACHE_DIR / "assets" / "books_features.csv"
+EMBEDDINGS_DIR = HF_CACHE_DIR / "assets"
 EMBEDDINGS_DIR.mkdir(exist_ok=True)
 
 # ---------- DATABASE ----------
@@ -129,23 +129,22 @@ def load_recommender():
     global recommender
 
     try:
-        # --------- STEP 1: Ensure features CSV exists ----------
+        print("⬇️ Loading assets from Hugging Face...")
+        load_books_dataset(
+            dataset_name=HF_DATASET_NAME,
+            cache_dir=HF_CACHE_DIR
+        )
+
+        # Sanity check
         if not FEATURES_CSV.exists():
-            print("⬇️ Loading dataset from Hugging Face...")
-            df = load_books_dataset(
-                dataset_name=HF_DATASET_NAME,
-                cache_dir=HF_CACHE_DIR
-            )
+            raise RuntimeError("books_features.csv missing")
 
-            # Ensure record_id exists
-            if "record_id" not in df.columns:
-                df["record_id"] = df.index.astype(str)
+        if not (EMBEDDINGS_DIR / "faiss.index").exists():
+            raise RuntimeError("faiss.index missing")
 
-            df = df.fillna("")
-            df.to_csv(FEATURES_CSV, index=False)
-            print("✅ books_features.csv created")
+        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
+            raise RuntimeError("index_metadata.pkl missing")
 
-        # --------- STEP 2: Load recommender ----------
         recommender = AdvancedTransformerRecommender(
             data_csv=FEATURES_CSV,
             embedding_dir=EMBEDDINGS_DIR
