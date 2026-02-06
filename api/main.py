@@ -5,6 +5,7 @@ FastAPI Book Recommendation Service
 import sys
 from pathlib import Path
 from typing import Optional
+import threading
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,6 @@ from sqlalchemy import create_engine, Column, String, Text, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 
-from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
 from api.utils.hf_loader import load_books_dataset 
 
 # ======================================================
@@ -124,26 +124,18 @@ recommender = None
 
 HF_DATASET_NAME = "DhruvParmar051/book-recommender-assets"
 
-@app.on_event("startup")
-def load_recommender():
+def background_load_recommender():
     global recommender
-
     try:
         print("⬇️ Loading assets from Hugging Face...")
+
         load_books_dataset(
             dataset_name=HF_DATASET_NAME,
             cache_dir=HF_CACHE_DIR
         )
 
-        # Sanity check
-        if not FEATURES_CSV.exists():
-            raise RuntimeError("books_features.csv missing")
-
-        if not (EMBEDDINGS_DIR / "faiss.index").exists():
-            raise RuntimeError("faiss.index missing")
-
-        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
-            raise RuntimeError("index_metadata.pkl missing")
+        # ⬇️ IMPORT HERE (lazy)
+        from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
 
         recommender = AdvancedTransformerRecommender(
             data_csv=FEATURES_CSV,
@@ -154,7 +146,16 @@ def load_recommender():
 
     except Exception as e:
         recommender = None
-        print(f"⚠️ Recommender disabled: {e}")
+        print(f"⚠️ Recommender failed: {e}")
+
+
+
+@app.on_event("startup")
+def startup_event():
+    threading.Thread(
+        target=background_load_recommender,
+        daemon=True
+    ).start()
 
 # ======================================================
 # HEALTH CHECK
