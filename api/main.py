@@ -1,5 +1,5 @@
 """
-FastAPI Book Recommendation Service
+FastAPI Book Recommendation Service (DIRECT FILE MODE)
 """
 
 import sys
@@ -13,7 +13,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
-from api.utils.hf_loader import load_books_dataset
 
 # ======================================================
 # PROJECT SETUP
@@ -22,15 +21,33 @@ from api.utils.hf_loader import load_books_dataset
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# ---------- FIXED ASSET PATHS (MATCH YOUR TREE) ----------
+# ======================================================
+# DIRECT DATA PATHS (FROM GITHUB REPO)
+# ======================================================
+
 DATA_DIR = PROJECT_ROOT / "data"
-ASSETS_DIR = DATA_DIR / "hf_cache_assets"
 
-FEATURES_CSV = ASSETS_DIR / "books_features.csv"
-EMBEDDINGS_DIR = ASSETS_DIR
+FEATURES_CSV = DATA_DIR / 'processed_data' /"books_features.csv"
+EMBEDDINGS_DIR = DATA_DIR / "storage" / 'embeddings'
 
-# ---------- DATABASE ----------
 DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
+
+# ---- HARD FAIL EARLY IF FILES ARE MISSING ----
+if not FEATURES_CSV.exists():
+    raise RuntimeError(f"Missing {FEATURES_CSV}")
+
+if not (EMBEDDINGS_DIR / "faiss.index").exists():
+    raise RuntimeError("Missing faiss.index")
+
+if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
+    raise RuntimeError("Missing index_metadata.pkl")
+
+if not DB_PATH.exists():
+    raise RuntimeError(f"Missing {DB_PATH}")
+
+# ======================================================
+# DATABASE
+# ======================================================
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -75,10 +92,8 @@ def get_db():
 def clean_value(val):
     if val is None:
         return None
-    if isinstance(val, float) and val != val:
-        return None
     val = str(val).strip()
-    return val if val.lower() not in {"", "null", "none"} else None
+    return val if val and val.lower() not in {"null", "none"} else None
 
 def format_list(val):
     if not val:
@@ -112,43 +127,24 @@ app.add_middleware(
 )
 
 # ======================================================
-# LOAD RECOMMENDER (DETERMINISTIC)
+# LOAD RECOMMENDER (DIRECT, GUARANTEED)
 # ======================================================
-HF_DATASET_NAME = "DhruvParmar051/book-recommender-assets"
 
-HF_CACHE_DIR = DATA_DIR / "hf_cache"
-HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 recommender = None
+
 @app.on_event("startup")
 def load_recommender():
     global recommender
 
     try:
-        print("⬇️ Loading assets from Hugging Face...")
-
-        asset_dir = load_books_dataset(
-            dataset_name=HF_DATASET_NAME,
-            cache_dir=HF_CACHE_DIR
-        )
-
-        features_csv = asset_dir / "books_features.csv"
-        embeddings_dir = asset_dir
-
-        if not features_csv.exists():
-            raise RuntimeError("books_features.csv not found in HF dataset")
-
-        if not (embeddings_dir / "faiss.index").exists():
-            raise RuntimeError("faiss.index not found in HF dataset")
-
-        if not (embeddings_dir / "index_metadata.pkl").exists():
-            raise RuntimeError("index_metadata.pkl not found in HF dataset")
+        print("🚀 Loading recommender from local files...")
 
         recommender = AdvancedTransformerRecommender(
-            data_csv=features_csv,
-            embedding_dir=embeddings_dir
+            data_csv=FEATURES_CSV,
+            embedding_dir=EMBEDDINGS_DIR
         )
 
-        print("🚀 Recommender loaded successfully")
+        print("✅ Recommender loaded successfully")
 
     except Exception as e:
         recommender = None
@@ -245,16 +241,17 @@ def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
         for b in books
     ]
 
+# ======================================================
+# ENTRYPOINT (RENDER + LOCAL)
+# ======================================================
 
 if __name__ == "__main__":
     import os
     import uvicorn
 
-    port = int(os.environ.get("PORT", 10000))
-
     uvicorn.run(
         "api.main:app",
         host="0.0.0.0",
-        port=port,
+        port=int(os.environ.get("PORT", 10000)),
         log_level="info"
     )
