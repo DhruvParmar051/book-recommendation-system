@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 DATA_DIR = PROJECT_ROOT / "data"
 
 FEATURES_CSV = DATA_DIR / 'processed_data' /"books_features.csv"
-EMBEDDINGS_DIR = DATA_DIR / "storage" / 'embeddings'
+EMBEDDINGS_DIR = PROJECT_ROOT / "storage" / 'embeddings'
 
 DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
 
