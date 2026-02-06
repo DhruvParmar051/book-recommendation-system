@@ -1,8 +1,5 @@
 # Data
-data/
-*.csv
-*.db
-*.sqlite3
+
 
 .ipynb
 # Python
