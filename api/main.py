@@ -1,8 +1,9 @@
 """
-FastAPI Book Recommendation Service (DIRECT FILE MODE)
+FastAPI Book Recommendation Service (Render Safe)
 """
 
 import sys
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -22,28 +23,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ======================================================
-# DIRECT DATA PATHS (FROM GITHUB REPO)
+# DATA PATHS
 # ======================================================
 
 DATA_DIR = PROJECT_ROOT / "data"
-
-FEATURES_CSV = DATA_DIR / 'processed_data' /"books_features.csv"
-EMBEDDINGS_DIR = PROJECT_ROOT / "storage" / 'embeddings'
-
+FEATURES_CSV = DATA_DIR / "processed_data" / "books_features.csv"
+EMBEDDINGS_DIR = PROJECT_ROOT / "storage" / "embeddings"
 DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
-
-# ---- HARD FAIL EARLY IF FILES ARE MISSING ----
-if not FEATURES_CSV.exists():
-    raise RuntimeError(f"Missing {FEATURES_CSV}")
-
-if not (EMBEDDINGS_DIR / "faiss.index").exists():
-    raise RuntimeError("Missing faiss.index")
-
-if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
-    raise RuntimeError("Missing index_metadata.pkl")
-
-if not DB_PATH.exists():
-    raise RuntimeError(f"Missing {DB_PATH}")
 
 # ======================================================
 # DATABASE
@@ -117,7 +103,10 @@ class RecommendationRequest(BaseModel):
 # FASTAPI APP
 # ======================================================
 
-app = FastAPI(title="Book Recommendation API", version="1.4.0")
+app = FastAPI(
+    title="Book Recommendation API",
+    version="1.4.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -127,17 +116,33 @@ app.add_middleware(
 )
 
 # ======================================================
-# LOAD RECOMMENDER (DIRECT, GUARANTEED)
+# RECOMMENDER (LAZY LOAD)
 # ======================================================
 
 recommender = None
 
 @app.on_event("startup")
 def load_recommender():
+    """
+    Runs AFTER the server starts listening on a port.
+    NEVER crash here — fail gracefully.
+    """
     global recommender
 
     try:
-        print("🚀 Loading recommender from local files...")
+        print("🚀 Startup checks...")
+
+        if not FEATURES_CSV.exists():
+            raise RuntimeError(f"Missing {FEATURES_CSV}")
+
+        if not (EMBEDDINGS_DIR / "faiss.index").exists():
+            raise RuntimeError("Missing faiss.index")
+
+        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
+            raise RuntimeError("Missing index_metadata.pkl")
+
+        if not DB_PATH.exists():
+            raise RuntimeError(f"Missing {DB_PATH}")
 
         recommender = AdvancedTransformerRecommender(
             data_csv=FEATURES_CSV,
@@ -148,7 +153,7 @@ def load_recommender():
 
     except Exception as e:
         recommender = None
-        print(f"❌ Recommender failed to load: {e}")
+        print(f"❌ Startup error: {e}")
 
 # ======================================================
 # HEALTH CHECK
@@ -212,7 +217,10 @@ def browse_books(
 # ======================================================
 
 @app.post("/recommend")
-def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
+def recommend_books(
+    req: RecommendationRequest,
+    db: Session = Depends(get_db)
+):
     if recommender is None:
         raise HTTPException(503, "Recommendation engine not available")
 
@@ -240,18 +248,3 @@ def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
         }
         for b in books
     ]
-
-# ======================================================
-# ENTRYPOINT (RENDER + LOCAL)
-# ======================================================
-
-if __name__ == "__main__":
-    import os
-    import uvicorn
-
-    uvicorn.run(
-        "api.main:app",
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        log_level="info"
-    )
