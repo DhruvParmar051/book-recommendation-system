@@ -138,16 +138,8 @@ class AdvancedTransformerRecommender:
         # ------------------------------
         # Load models (OFFLINE SAFE)
         # ------------------------------
-        self.bi_encoder = SentenceTransformer(
-            BI_ENCODER_MODEL,
-            local_files_only=True
-        )
-
-        self.cross_encoder = CrossEncoder(
-            CROSS_ENCODER_MODEL,
-            local_files_only=True
-        )
-
+        self.bi_encoder = SentenceTransformer(BI_ENCODER_MODEL)
+        self.cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL)
         # ------------------------------
         # Load FAISS index
         # ------------------------------
