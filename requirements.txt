@@ -7,4 +7,4 @@ faiss-cpu
 numpy
 pandas
 torch
-kaggle
+datasets

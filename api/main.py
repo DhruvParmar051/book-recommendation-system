@@ -2,7 +2,6 @@
 FastAPI Book Recommendation Service
 """
 
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -12,8 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Text, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
+
 from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
-from api.utils.kaggle_loader import download_kaggle_dataset
+from api.utils.hf_loader import load_books_dataset 
 
 # ======================================================
 # PROJECT SETUP
@@ -22,8 +22,19 @@ from api.utils.kaggle_loader import download_kaggle_dataset
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-DB_PATH = PROJECT_ROOT / "data" / "storage_data" / "books.sqlite"
+# ---------- DATA LOCATIONS (Render + Local safe) ----------
+DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR.mkdir(exist_ok=True)
 
+HF_CACHE_DIR = DATA_DIR / "hf_cache"
+HF_CACHE_DIR.mkdir(exist_ok=True)
+
+FEATURES_CSV = DATA_DIR / "books_features.csv"
+EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+EMBEDDINGS_DIR.mkdir(exist_ok=True)
+
+# ---------- DATABASE ----------
+DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -32,7 +43,6 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
-
 
 # ======================================================
 # DATABASE MODEL
@@ -74,6 +84,7 @@ def clean_value(val):
     val = str(val).strip()
     return val if val.lower() not in {"", "null", "none"} else None
 
+
 def format_list(val):
     if not val:
         return None
@@ -96,59 +107,7 @@ class RecommendationRequest(BaseModel):
 # FASTAPI APP
 # ======================================================
 
-app = FastAPI(title="Book Recommendation API", version="1.2.0")
-
-
-recommender = None
-
-def resolve_ml_paths(project_root: Path):
-    """
-    Resolve ML data paths dynamically.
-    Supports both local-dev and production layouts.
-    """
-
-    candidates = [
-        # ✅ Kaggle-downloaded layout (your current case)
-        {
-            "csv": project_root / "books_features.csv",
-            "emb": project_root / "embeddings",
-        },
-        # ✅ Planned/clean layout
-        {
-            "csv": project_root / "data" / "processed_data" / "books_features.csv",
-            "emb": project_root / "storage" / "embeddings",
-        },
-    ]
-
-    for c in candidates:
-        if c["csv"].exists() and c["emb"].exists():
-            return c["csv"], c["emb"]
-
-    return None, None
-
-
-@app.on_event("startup")
-def load_recommender():
-    global recommender
-
-    data_csv, embedding_dir = resolve_ml_paths(PROJECT_ROOT)
-
-    if not data_csv or not embedding_dir:
-        print("⚠️ ML files not found. Recommender disabled.")
-        recommender = None
-        return
-
-    from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
-
-    recommender = AdvancedTransformerRecommender(
-        data_csv=data_csv,
-        embedding_dir=embedding_dir
-    )
-
-    print("✅ Recommender loaded successfully")
-
-
-
+app = FastAPI(title="Book Recommendation API", version="1.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -156,6 +115,51 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ======================================================
+# LOAD RECOMMENDER (HF-FIRST, FAIL-SAFE)
+# ======================================================
+
+recommender = None
+
+HF_DATASET_NAME = "DhruvParmar051/book-recommender-assets"
+
+@app.on_event("startup")
+def load_recommender():
+    global recommender
+
+    try:
+        # --------- STEP 1: Ensure features CSV exists ----------
+        if not FEATURES_CSV.exists():
+            print("⬇️ Loading dataset from Hugging Face...")
+            df = load_books_dataset(
+                dataset_name=HF_DATASET_NAME,
+                cache_dir=HF_CACHE_DIR
+            )
+
+            # Ensure record_id exists
+            if "record_id" not in df.columns:
+                df["record_id"] = df.index.astype(str)
+
+            df = df.fillna("")
+            df.to_csv(FEATURES_CSV, index=False)
+            print("✅ books_features.csv created")
+
+        # --------- STEP 2: Load recommender ----------
+        recommender = AdvancedTransformerRecommender(
+            data_csv=FEATURES_CSV,
+            embedding_dir=EMBEDDINGS_DIR
+        )
+
+        print("🚀 Recommender loaded successfully")
+
+    except Exception as e:
+        recommender = None
+        print(f"⚠️ Recommender disabled: {e}")
+
+# ======================================================
+# HEALTH CHECK
+# ======================================================
 
 @app.get("/")
 def health():
@@ -211,23 +215,20 @@ def browse_books(
         item = {k: v for k, v in item.items() if v is not None}
         items.append(item)
 
-    return {
-        "total": total,
-        "items": items
-    }
+    return {"total": total, "items": items}
 
+# ======================================================
+# RECOMMENDATION ENDPOINT
+# ======================================================
 
 @app.post("/recommend")
 def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
-    """
-    Semantic book recommendation endpoint.
-    """
     if recommender is None:
         raise HTTPException(
             status_code=503,
-            detail="Recommendation engine not available"
+            detail="Recommendation engine warming up"
         )
-    # Get ranked results from transformer
+
     df = recommender.recommend(req.query, req.top_k)
 
     if df.empty:
@@ -236,14 +237,12 @@ def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
     record_ids = df["record_id"].tolist()
     score_map = dict(zip(df["record_id"], df["final_score"]))
 
-    # Fetch full book data from DB
     books = (
         db.query(Book)
         .filter(Book.record_id.in_(record_ids))
         .all()
     )
 
-    # Preserve ranking order
     books.sort(key=lambda b: score_map[b.record_id], reverse=True)
 
     results = []
