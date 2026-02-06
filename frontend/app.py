@@ -8,14 +8,13 @@ import math
 # CONFIG
 # ======================================================
 
-
 API_BASE = os.getenv(
     "API_BASE_URL",
     "http://127.0.0.1:8000"  # fallback for local dev
 )
 
 PAGE_SIZE = 5
-RECOMMEND_PAGE_SIZE = 10   # 🔥 pagination size for recommendations
+RECOMMEND_PAGE_SIZE = 10
 
 st.set_page_config(
     page_title="📚 Book Recommender",
@@ -72,6 +71,7 @@ def get_books(skip, limit, search_field=None, query=None):
         r = requests.get(f"{API_BASE}/books/", params=params, timeout=20)
         r.raise_for_status()
         return r.json()
+
     except requests.RequestException:
         st.error("❌ Cannot connect to backend API")
         return {"items": [], "total": 0}
@@ -86,21 +86,19 @@ def get_recommendations(query, top_k):
         )
 
         if r.status_code == 503:
-            return {"error": "Recommendation engine is warming up. Please try again in a minute."}
+            return {"error": "Recommendation engine is warming up. Please try again shortly."}
 
         r.raise_for_status()
         return r.json()
 
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-
+    except requests.RequestException:
+        return {"error": "Unable to connect to recommendation service."}
 
 
 def get_cover(isbn):
     if not isbn:
         return None
     return f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
-
 
 # ======================================================
 # SIDEBAR NAVIGATION
@@ -154,35 +152,35 @@ if st.session_state.page == "Browse":
     total_pages = max(1, math.ceil(total / PAGE_SIZE))
     current_page = (st.session_state.skip // PAGE_SIZE) + 1
 
-    for book in books:
-        with st.container(border=True):
-            col_img, col_text = st.columns([1, 3], gap="large")
+    if not books:
+        st.info("No books found.")
+    else:
+        for book in books:
+            with st.container(border=True):
+                col_img, col_text = st.columns([1, 3], gap="large")
 
-            with col_img:
-                    cover_placeholder = st.empty()
+                with col_img:
+                    placeholder = st.empty()
                     cover = get_cover(book.get("isbn"))
                     if cover:
                         with st.spinner("Loading cover…"):
-                            cover_placeholder.image(
-                            cover,
-                            use_container_width=True
-                        )
+                            placeholder.image(cover, use_container_width=True)
                     else:
-                        cover_placeholder.markdown("🖼️ _No cover available_")
+                        placeholder.markdown("🖼️ _No cover available_")
 
-            with col_text:
-                st.markdown(
-                    f"<div class='book-title'>{book.get('title','Untitled')}</div>",
-                    unsafe_allow_html=True
-                )
+                with col_text:
+                    st.markdown(
+                        f"<div class='book-title'>{book.get('title','Untitled')}</div>",
+                        unsafe_allow_html=True
+                    )
 
-                show_field("Author", parse_list(book.get("authors")))
-                show_field("Publisher", book.get("publisher"))
-                show_field("Year", book.get("year"))
-                show_field("Subjects", parse_list(book.get("subjects")))
+                    show_field("Author", parse_list(book.get("authors")))
+                    show_field("Publisher", book.get("publisher"))
+                    show_field("Year", book.get("year"))
+                    show_field("Subjects", parse_list(book.get("subjects")))
 
-                with st.expander("📖 Read full summary"):
-                    st.write(book.get("summary") or "_Summary not available_")
+                    with st.expander("📖 Read full summary"):
+                        st.write(book.get("summary") or "_Summary not available_")
 
     col_prev, col_mid, col_next = st.columns([1, 5, 1])
 
@@ -205,7 +203,7 @@ if st.session_state.page == "Browse":
             st.rerun()
 
 # ======================================================
-# PAGE 2 — RECOMMENDATION SYSTEM (WITH PAGINATION)
+# PAGE 2 — RECOMMENDATIONS
 # ======================================================
 
 else:
@@ -245,65 +243,69 @@ else:
                 st.session_state.rec_results = get_recommendations(query, top_k)
                 st.session_state.rec_page = 1
 
-    results = st.session_state.get("rec_results", [])
+    results = st.session_state.get("rec_results")
 
-    if results:
-        total = len(results)
-        total_pages = math.ceil(total / RECOMMEND_PAGE_SIZE)
-        page = st.session_state.rec_page
+    # 🔒 ERROR HANDLING (CRITICAL FIX)
+    if isinstance(results, dict) and "error" in results:
+        st.warning(results["error"])
+        st.stop()
 
-        start = (page - 1) * RECOMMEND_PAGE_SIZE
-        end = start + RECOMMEND_PAGE_SIZE
-        page_items = results[start:end]
+    if not results:
+        st.info("No recommendations found.")
+        st.stop()
 
-        for book in page_items:
-            with st.container(border=True):
-                col_img, col_text = st.columns([1, 3], gap="large")
+    total = len(results)
+    total_pages = math.ceil(total / RECOMMEND_PAGE_SIZE)
+    page = st.session_state.rec_page
 
-                with col_img:
-                    cover_placeholder = st.empty()
-                    cover = get_cover(book.get("isbn"))
-                    if cover:
-                        with st.spinner("Loading cover…"):
-                            cover_placeholder.image(
-                            cover,
-                            use_container_width=True
-                        )
-                    else:
-                        cover_placeholder.markdown("🖼️ _No cover available_")
-                
+    start = (page - 1) * RECOMMEND_PAGE_SIZE
+    end = start + RECOMMEND_PAGE_SIZE
+    page_items = results[start:end]
 
-                with col_text:
-                    st.markdown(
-                        f"<div class='book-title'>{book.get('title','Untitled')}</div>",
-                        unsafe_allow_html=True
-                    )
+    for book in page_items:
+        with st.container(border=True):
+            col_img, col_text = st.columns([1, 3], gap="large")
 
-                    show_field("Author", parse_list(book.get("authors")))
-                    show_field("Publisher", book.get("publisher"))
-                    show_field("Year", book.get("year"))
-                    show_field("Subjects", parse_list(book.get("subjects")))
+            with col_img:
+                placeholder = st.empty()
+                cover = get_cover(book.get("isbn"))
+                if cover:
+                    with st.spinner("Loading cover…"):
+                        placeholder.image(cover, use_container_width=True)
+                else:
+                    placeholder.markdown("🖼️ _No cover available_")
 
-                    with st.expander("📖 Read full summary"):
-                        st.write(book.get("summary") or "_Summary not available_")
-
-        if total_pages > 1:
-            col_prev, col_mid, col_next = st.columns([1, 5, 1])
-
-            with col_prev:
-                if st.button("⬅ Previous", disabled=page == 1):
-                    st.session_state.rec_page -= 1
-                    st.rerun()
-
-            with col_mid:
+            with col_text:
                 st.markdown(
-                    f"<p style='text-align:center;'>"
-                    f"Page <b>{page}</b> of <b>{total_pages}</b> "
-                    f"({total} recommendations)</p>",
+                    f"<div class='book-title'>{book.get('title','Untitled')}</div>",
                     unsafe_allow_html=True
                 )
 
-            with col_next:
-                if st.button("Next ➡", disabled=page == total_pages):
-                    st.session_state.rec_page += 1
-                    st.rerun()
+                show_field("Author", parse_list(book.get("authors")))
+                show_field("Publisher", book.get("publisher"))
+                show_field("Year", book.get("year"))
+                show_field("Subjects", parse_list(book.get("subjects")))
+
+                with st.expander("📖 Read full summary"):
+                    st.write(book.get("summary") or "_Summary not available_")
+
+    if total_pages > 1:
+        col_prev, col_mid, col_next = st.columns([1, 5, 1])
+
+        with col_prev:
+            if st.button("⬅ Previous", disabled=page == 1):
+                st.session_state.rec_page -= 1
+                st.rerun()
+
+        with col_mid:
+            st.markdown(
+                f"<p style='text-align:center;'>"
+                f"Page <b>{page}</b> of <b>{total_pages}</b> "
+                f"({total} recommendations)</p>",
+                unsafe_allow_html=True
+            )
+
+        with col_next:
+            if st.button("Next ➡", disabled=page == total_pages):
+                st.session_state.rec_page += 1
+                st.rerun()
