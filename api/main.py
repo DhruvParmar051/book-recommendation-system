@@ -5,7 +5,6 @@ FastAPI Book Recommendation Service
 import sys
 from pathlib import Path
 from typing import Optional
-import threading
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +12,7 @@ from sqlalchemy import create_engine, Column, String, Text, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 
-from api.utils.hf_loader import load_books_dataset 
+from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
 
 # ======================================================
 # PROJECT SETUP
@@ -22,16 +21,12 @@ from api.utils.hf_loader import load_books_dataset
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# ---------- DATA LOCATIONS (Render + Local safe) ----------
+# ---------- FIXED ASSET PATHS (MATCH YOUR TREE) ----------
 DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
+ASSETS_DIR = DATA_DIR / "hf_cache_assets"
 
-HF_CACHE_DIR = DATA_DIR / "hf_cache"
-HF_CACHE_DIR.mkdir(exist_ok=True)
-
-FEATURES_CSV = HF_CACHE_DIR / "assets" / "books_features.csv"
-EMBEDDINGS_DIR = HF_CACHE_DIR / "assets"
-EMBEDDINGS_DIR.mkdir(exist_ok=True)
+FEATURES_CSV = ASSETS_DIR / "books_features.csv"
+EMBEDDINGS_DIR = ASSETS_DIR
 
 # ---------- DATABASE ----------
 DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
@@ -84,7 +79,6 @@ def clean_value(val):
     val = str(val).strip()
     return val if val.lower() not in {"", "null", "none"} else None
 
-
 def format_list(val):
     if not val:
         return None
@@ -107,7 +101,7 @@ class RecommendationRequest(BaseModel):
 # FASTAPI APP
 # ======================================================
 
-app = FastAPI(title="Book Recommendation API", version="1.3.0")
+app = FastAPI(title="Book Recommendation API", version="1.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,45 +111,37 @@ app.add_middleware(
 )
 
 # ======================================================
-# LOAD RECOMMENDER (HF-FIRST, FAIL-SAFE)
+# LOAD RECOMMENDER (DETERMINISTIC)
 # ======================================================
 
 recommender = None
 
-HF_DATASET_NAME = "DhruvParmar051/book-recommender-assets"
-
-def background_load_recommender():
+@app.on_event("startup")
+def load_recommender():
     global recommender
+
     try:
-        print("⬇️ Loading assets from Hugging Face...")
+        print("🔍 Checking recommender assets...")
 
-        load_books_dataset(
-            dataset_name=HF_DATASET_NAME,
-            cache_dir=HF_CACHE_DIR
-        )
+        if not FEATURES_CSV.exists():
+            raise RuntimeError("books_features.csv not found")
 
-        # ⬇️ IMPORT HERE (lazy)
-        from recommender.advanced_transformer_recommender import AdvancedTransformerRecommender
+        if not (EMBEDDINGS_DIR / "faiss.index").exists():
+            raise RuntimeError("faiss.index not found")
+
+        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
+            raise RuntimeError("index_metadata.pkl not found")
 
         recommender = AdvancedTransformerRecommender(
             data_csv=FEATURES_CSV,
             embedding_dir=EMBEDDINGS_DIR
         )
 
-        print("🚀 Recommender loaded successfully")
+        print("✅ Recommender loaded successfully")
 
     except Exception as e:
         recommender = None
-        print(f"⚠️ Recommender failed: {e}")
-
-
-
-@app.on_event("startup")
-def startup_event():
-    threading.Thread(
-        target=background_load_recommender,
-        daemon=True
-    ).start()
+        print(f"❌ Recommender failed to load: {e}")
 
 # ======================================================
 # HEALTH CHECK
@@ -169,7 +155,7 @@ def health():
     }
 
 # ======================================================
-# BROWSE + SEARCH BOOKS
+# BROWSE BOOKS
 # ======================================================
 
 @app.get("/books/")
@@ -183,71 +169,58 @@ def browse_books(
     q = db.query(Book)
 
     if search_field and query:
-        if search_field not in {"title", "authors", "publisher"}:
-            raise HTTPException(status_code=400, detail="Invalid search_field")
-
         column = {
             "title": Book.title,
             "authors": Book.authors,
             "publisher": Book.publisher
-        }[search_field]
+        }.get(search_field)
 
-        q = q.filter(
-            column.isnot(None),
-            func.lower(column).like(f"%{query.lower()}%")
-        )
+        if not column:
+            raise HTTPException(400, "Invalid search_field")
+
+        q = q.filter(func.lower(column).like(f"%{query.lower()}%"))
 
     total = q.count()
     books = q.offset(skip).limit(limit).all()
 
-    items = []
-    for b in books:
-        item = {
-            "title": clean_value(b.title),
-            "authors": format_list(clean_value(b.authors)),
-            "publisher": clean_value(b.publisher),
-            "year": clean_value(b.year),
-            "subjects": format_list(clean_value(b.subjects)),
-            "summary": clean_value(b.summary),
-            "pages": clean_value(b.pages),
-            "isbn": clean_value(b.isbn),
-        }
-        item = {k: v for k, v in item.items() if v is not None}
-        items.append(item)
-
-    return {"total": total, "items": items}
+    return {
+        "total": total,
+        "items": [
+            {
+                "title": clean_value(b.title),
+                "authors": format_list(clean_value(b.authors)),
+                "publisher": clean_value(b.publisher),
+                "year": clean_value(b.year),
+                "subjects": format_list(clean_value(b.subjects)),
+                "summary": clean_value(b.summary),
+                "pages": clean_value(b.pages),
+                "isbn": clean_value(b.isbn),
+            }
+            for b in books
+        ]
+    }
 
 # ======================================================
-# RECOMMENDATION ENDPOINT
+# RECOMMENDATION
 # ======================================================
 
 @app.post("/recommend")
 def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
     if recommender is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Recommendation engine warming up"
-        )
+        raise HTTPException(503, "Recommendation engine not available")
 
     df = recommender.recommend(req.query, req.top_k)
-
     if df.empty:
         return []
 
     record_ids = df["record_id"].tolist()
     score_map = dict(zip(df["record_id"], df["final_score"]))
 
-    books = (
-        db.query(Book)
-        .filter(Book.record_id.in_(record_ids))
-        .all()
-    )
-
+    books = db.query(Book).filter(Book.record_id.in_(record_ids)).all()
     books.sort(key=lambda b: score_map[b.record_id], reverse=True)
 
-    results = []
-    for b in books:
-        item = {
+    return [
+        {
             "title": clean_value(b.title),
             "authors": format_list(clean_value(b.authors)),
             "publisher": clean_value(b.publisher),
@@ -258,7 +231,6 @@ def recommend_books(req: RecommendationRequest, db: Session = Depends(get_db)):
             "isbn": clean_value(b.isbn),
             "score": score_map[b.record_id],
         }
-        item = {k: v for k, v in item.items() if v is not None}
-        results.append(item)
+        for b in books
+    ]
 
-    return results
