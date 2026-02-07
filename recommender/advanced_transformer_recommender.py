@@ -1,309 +1,147 @@
 """
-Advanced Transformer-Based Recommendation Engine (FAST VERSION)
+Advanced Transformer-Based Recommendation Engine (LOW-RAM VERSION)
 
-This module implements a high-performance, production-style
-book recommendation engine using a layered transformer architecture.
+Designed explicitly for:
+- Render Free tier (512 MB)
+- CPU-only inference
+- Lazy loading
+- FAISS + MiniLM only
 
-ARCHITECTURE
-------------
-1. Bi-encoder (SentenceTransformer)
-   - Encodes query into dense vector
-   - Uses FAISS for ultra-fast ANN retrieval
+REMOVED:
+- Cross-encoder
+- Pandas DataFrame retention
+- Warmup
+- Hybrid metadata scoring
 
-2. Cross-encoder (MiniLM)
-   - Reranks top-N candidates precisely
-   - Applied only to a small candidate pool
-
-3. Lightweight hybrid scoring
-   - Metadata-aware adjustments
-   - No heavy pandas loops
-
-PERFORMANCE DESIGN
-------------------
-- Models loaded once
-- Offline-safe (local_files_only=True)
-- Cached embeddings
-- Small rerank pool
-- No recomputation
-
-THIS FILE IS:
--------------
-✔ Inference-only
-✔ ETL-agnostic
-✔ API-safe
+KEPT:
+- Transformer bi-encoder
+- FAISS ANN search
+- Inference-only API
 """
 
 from pathlib import Path
 import pickle
-import re
+import gc
 
-import faiss
 import numpy as np
-import pandas as pd
-from sentence_transformers import SentenceTransformer, CrossEncoder
+import faiss
+import torch
+from sentence_transformers import SentenceTransformer
 
 # ======================================================
-# MODEL CONFIG
+# HARD MEMORY LIMITS (CRITICAL)
 # ======================================================
+
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
 
 BI_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
-CANDIDATE_POOL = 30   # 🔥 critical for speed
-
 
 # ======================================================
-# FAISS LOADERS
-# ======================================================
-
-def load_faiss_index(embedding_dir: Path):
-    """
-    Load FAISS index + row mapping.
-    """
-    index_path = embedding_dir / "faiss.index"
-    meta_path = embedding_dir / "index_metadata.pkl"
-
-    if not index_path.exists():
-        raise FileNotFoundError("FAISS index not found")
-
-    if not meta_path.exists():
-        raise FileNotFoundError("Index metadata not found")
-
-    index = faiss.read_index(str(index_path))
-    with open(meta_path, "rb") as f:
-        index_map = pickle.load(f)
-
-    return index, index_map
-
-
-# ======================================================
-# HELPER FUNCTIONS
-# ======================================================
-
-def extract_page_count(pages):
-    """
-    Extract numeric page count for depth heuristic.
-    """
-    if not isinstance(pages, str):
-        return 0.0
-
-    m = re.search(r"\d+", pages)
-    return float(m.group()) if m else 0.0
-
-
-def safe_str(val):
-    """
-    Convert NaN → None for API safety.
-    """
-    if val is None:
-        return None
-    if pd.isna(val):
-        return None
-
-    val = str(val).strip()
-    return val if val else None
-
-def safe_col(row, col):
-    """
-    Safely read a column from a pandas row.
-    Returns empty string if column is missing or NaN.
-    """
-    if col not in row:
-        return ""
-    val = row[col]
-    if pd.isna(val):
-        return ""
-    return str(val)
-
-
-# ======================================================
-# RECOMMENDER CORE
+# RECOMMENDER
 # ======================================================
 
 class AdvancedTransformerRecommender:
     """
-    High-performance transformer recommender.
+    Ultra-low RAM semantic recommender.
     """
 
     def __init__(self, data_csv: Path, embedding_dir: Path):
-        # ------------------------------
-        # Load book metadata
-        # ------------------------------
-        self.books_df = pd.read_csv(data_csv)
-
-        # Clean NaNs once (important for API)
-        self.books_df = self.books_df.fillna("")
-
-        # ------------------------------
-        # Load models (OFFLINE SAFE)
-        # ------------------------------
-        self.bi_encoder = SentenceTransformer(BI_ENCODER_MODEL)
-        self.cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL)
-        # ------------------------------
-        # Load FAISS index
-        # ------------------------------
-        self.faiss_index, self.index_map = load_faiss_index(embedding_dir)
-
-        # ------------------------------
-        # Warm-up (prevents slow first call)
-        # ------------------------------
-        self._warmup()
-
-    # --------------------------------------------------
-    # Internal warmup
-    # --------------------------------------------------
-
-    def _warmup(self):
-        _ = self.bi_encoder.encode(
-            ["machine learning"],
-            normalize_embeddings=True
-        )
-
-    # --------------------------------------------------
-    # Recommendation API
-    # --------------------------------------------------
-
-    def recommend(self, query: str, top_k: int = 5) -> pd.DataFrame:
         """
-        Recommend top-k books for a free-text query.
+        DO NOT load models, FAISS, or data here.
+        Only store paths.
         """
 
-        # ------------------------------
-        # Stage 1: Bi-encoder retrieval
-        # ------------------------------
-        query_vec = self.bi_encoder.encode(
+        self.embedding_dir = embedding_dir
+        self.index_path = embedding_dir / "faiss.index"
+        self.meta_path = embedding_dir / "index_metadata.pkl"
+
+        self._model = None
+        self._index = None
+        self._record_ids = None
+
+    # ==================================================
+    # LAZY MODEL LOAD
+    # ==================================================
+
+    def _load_model(self):
+        if self._model is None:
+            print("🧠 Loading MiniLM bi-encoder (low RAM)...")
+
+            self._model = SentenceTransformer(
+                BI_ENCODER_MODEL,
+                device="cpu"
+            )
+
+            gc.collect()
+
+        return self._model
+
+    # ==================================================
+    # LAZY FAISS LOAD
+    # ==================================================
+
+    def _load_faiss(self):
+        if self._index is None:
+            print("📦 Loading FAISS index...")
+
+            self._index = faiss.read_index(str(self.index_path))
+
+            with open(self.meta_path, "rb") as f:
+                meta = pickle.load(f)
+
+            # Expect ONLY record_id list
+            self._record_ids = meta["record_ids"]
+
+            del meta
+            gc.collect()
+
+        return self._index
+
+    # ==================================================
+    # QUERY EMBEDDING
+    # ==================================================
+
+    def _embed_query(self, query: str) -> np.ndarray:
+        model = self._load_model()
+
+        vec = model.encode(
             [query],
-            normalize_embeddings=True
-        ).astype("float32")
-
-        scores, indices = self.faiss_index.search(
-            query_vec,
-            CANDIDATE_POOL
+            normalize_embeddings=True,
+            show_progress_bar=False
         )
 
-        candidate_ids = indices[0]
-        candidates = self.books_df.iloc[candidate_ids].copy()
+        return vec.astype("float32")
 
-        # ------------------------------
-        # Stage 2: Cross-encoder rerank
-        # ------------------------------
-        pairs = [
-    (
-        query,
-        " ".join([
-            safe_col(row, "title"),
-            safe_col(row, "subjects"),
-            safe_col(row, "publisher"),
-            safe_col(row, "authors"),
-        ])
-    )
-    for _, row in candidates.iterrows()
-]
+    # ==================================================
+    # PUBLIC API
+    # ==================================================
 
+    def recommend(self, query: str, top_k: int = 5):
+        """
+        Return minimal recommendation results.
 
-        cross_scores = self.cross_encoder.predict(pairs)
-        candidates["cross_score"] = cross_scores
+        Output format:
+        [
+          {"record_id": "...", "final_score": 0.82},
+          ...
+        ]
+        """
 
-        # ------------------------------
-        # Stage 3: Lightweight hybrid score
-        # ------------------------------
-        candidates["depth_score"] = (
-            candidates["pages"]
-            .apply(extract_page_count)
-            / 1000.0
-        )
+        index = self._load_faiss()
+        query_vec = self._embed_query(query)
 
-        candidates["final_score"] = (
-            0.8 * candidates["cross_score"]
-            + 0.2 * candidates["depth_score"]
-        )
+        scores, indices = index.search(query_vec, top_k)
 
-        ranked = candidates.sort_values(
-            "final_score",
-            ascending=False
-        )
+        results = []
+        for idx, score in zip(indices[0], scores[0]):
+            if idx == -1:
+                continue
 
-        # ------------------------------
-        # Final formatting (API-safe)
-        # ------------------------------
-        result = ranked.head(top_k).copy()
+            results.append({
+                "record_id": self._record_ids[idx],
+                "final_score": float(score)
+            })
 
-        for col in result.columns:
-            result[col] = result[col].apply(safe_str)
-
-        return result
-
-
-# ======================================================
-# CLI (OPTIONAL TESTING)
-# ======================================================
-
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="""
-ADVANCED TRANSFORMER BOOK RECOMMENDER (FAST)
-
-PURPOSE
--------
-High-speed semantic book recommendation using:
-- Transformer bi-encoder
-- FAISS ANN search
-- Cross-encoder reranking
-
-USAGE
------
-python recommender/advanced_transformer_recommender.py \
-    --query "data mining" \
-    --top-k 5
-""",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-    parser.add_argument(
-        "--input-csv",
-        type=Path,
-        default=PROJECT_ROOT / "data/processed_data/books_features.csv"
-    )
-
-    parser.add_argument(
-        "--embedding-dir",
-        type=Path,
-        default=PROJECT_ROOT / "storage/embeddings"
-    )
-
-    parser.add_argument(
-        "--query",
-        type=str,
-        required=True
-    )
-
-    parser.add_argument(
-        "--top-k",
-        type=int,
-        default=5
-    )
-
-    args = parser.parse_args()
-
-    rec = AdvancedTransformerRecommender(
-        data_csv=args.input_csv,
-        embedding_dir=args.embedding_dir
-    )
-
-    results = rec.recommend(args.query, args.top_k)
-
-    print("\nRECOMMENDATIONS\n----------------")
-    for _, row in results.iterrows():
-        print(
-            f"- {row['title']} (score={row['final_score']})"
-        )
-
-
-if __name__ == "__main__":
-    main()
-
-# ================== END OF FILE ==================
+        gc.collect()
+        return results

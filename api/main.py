@@ -121,20 +121,40 @@ app.add_middleware(
 
 recommender = None
 
-recommender = None
-
-def get_recommender():
+@app.on_event("startup")
+def load_recommender():
+    """
+    Runs AFTER the server starts listening on a port.
+    NEVER crash here — fail gracefully.
+    """
     global recommender
 
-    if recommender is None:
-        print("⚡ Lazy-loading recommender model...")
+    try:
+        print("🚀 Startup checks...")
+
+        if not FEATURES_CSV.exists():
+            raise RuntimeError(f"Missing {FEATURES_CSV}")
+
+        if not (EMBEDDINGS_DIR / "faiss.index").exists():
+            raise RuntimeError("Missing faiss.index")
+
+        if not (EMBEDDINGS_DIR / "index_metadata.pkl").exists():
+            raise RuntimeError("Missing index_metadata.pkl")
+
+        if not DB_PATH.exists():
+            raise RuntimeError(f"Missing {DB_PATH}")
+
         recommender = AdvancedTransformerRecommender(
             data_csv=FEATURES_CSV,
             embedding_dir=EMBEDDINGS_DIR
         )
-        print("✅ Recommender loaded")
 
-    return recommender
+        print("✅ Recommender loaded successfully")
+
+    except Exception as e:
+        recommender = None
+        print(f"❌ Startup error: {e}")
+
 # ======================================================
 # HEALTH CHECK
 # ======================================================
@@ -201,7 +221,6 @@ def recommend_books(
     req: RecommendationRequest,
     db: Session = Depends(get_db)
 ):
-    recommender = get_recommender()
     if recommender is None:
         raise HTTPException(503, "Recommendation engine not available")
 
