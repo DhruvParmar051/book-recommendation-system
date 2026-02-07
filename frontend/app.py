@@ -17,8 +17,9 @@ PAGE_SIZE = 5
 RECOMMEND_PAGE_SIZE = 10
 
 st.set_page_config(
-    page_title="📚 Book Recommender",
-    layout="wide"
+    page_title="Book Recommender",
+    layout="wide",
+    page_icon="📚",
 )
 
 # ======================================================
@@ -36,6 +37,19 @@ st.markdown("""
     font-weight: 600;
 }
 </style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+    <style>
+    /* Hide top right toolbar */
+    header {visibility: hidden;}
+
+    /* Hide footer */
+    footer {visibility: hidden;}
+
+    /* Hide hamburger menu */
+    #MainMenu {visibility: hidden;}
+    </style>
 """, unsafe_allow_html=True)
 
 # ======================================================
