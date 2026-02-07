@@ -90,8 +90,18 @@ class AdvancedTransformerRecommender:
             with open(self.meta_path, "rb") as f:
                 meta = pickle.load(f)
 
-            # Expect ONLY record_id list
-            self._record_ids = meta["record_ids"]
+# 🔐 Backward-compatible handling
+            if "record_ids" in meta:
+                self._record_ids = meta["record_ids"]
+            elif "id_map" in meta:
+                self._record_ids = meta["id_map"]
+            elif "row_ids" in meta:
+                self._record_ids = meta["row_ids"]
+            else:
+                raise KeyError(
+                    f"FAISS metadata missing record id mapping. "
+                    f"Keys found: {list(meta.keys())}"
+                )
 
             del meta
             gc.collect()
