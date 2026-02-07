@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 DATA_DIR = PROJECT_ROOT / "data"
 FEATURES_CSV = DATA_DIR / "processed_data" / "books_features.csv"
-EMBEDDINGS_DIR = PROJECT_ROOT / "storage" / "embeddings"
+EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 DB_PATH = DATA_DIR / "storage_data" / "books.sqlite"
 
 # ======================================================
@@ -215,7 +215,6 @@ def browse_books(
 # ======================================================
 # RECOMMENDATION
 # ======================================================
-
 @app.post("/recommend")
 def recommend_books(
     req: RecommendationRequest,
@@ -224,15 +223,24 @@ def recommend_books(
     if recommender is None:
         raise HTTPException(503, "Recommendation engine not available")
 
-    df = recommender.recommend(req.query, req.top_k)
-    if df.empty:
+    results = recommender.recommend(req.query, req.top_k)
+
+    if not results:
         return []
 
-    record_ids = df["record_id"].tolist()
-    score_map = dict(zip(df["record_id"], df["final_score"]))
+    record_ids = [r["record_id"] for r in results]
+    score_map = {r["record_id"]: r["final_score"] for r in results}
 
-    books = db.query(Book).filter(Book.record_id.in_(record_ids)).all()
-    books.sort(key=lambda b: score_map[b.record_id], reverse=True)
+    books = (
+        db.query(Book)
+        .filter(Book.record_id.in_(record_ids))
+        .all()
+    )
+
+    books.sort(
+        key=lambda b: score_map.get(b.record_id, 0.0),
+        reverse=True
+    )
 
     return [
         {

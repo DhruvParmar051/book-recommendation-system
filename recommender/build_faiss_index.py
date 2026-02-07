@@ -132,7 +132,7 @@ OUTPUT
     parser.add_argument(
         "--embedding-dir",
         type=Path,
-        default=PROJECT_ROOT / "storage/embeddings",
+        default=PROJECT_ROOT / "data/embeddings",
         help="Directory containing book_embeddings.pkl"
     )
 

@@ -143,7 +143,7 @@ NOT INCLUDED
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=PROJECT_ROOT / "storage/embeddings",
+        default=PROJECT_ROOT / "data/embeddings",
         help="Directory to store embeddings (default: storage/embeddings)"
     )
 
