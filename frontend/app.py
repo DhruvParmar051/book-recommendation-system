@@ -55,7 +55,7 @@ st.markdown("""
 st.markdown("""
     <style>
     /* Hide Manage App button */
-    [data-testid="stAppDeployButton"] {
+    [data-testid="manage-app-button"] {
         display: none;
     }
     </style>
