@@ -77,6 +77,7 @@ def get_books(skip, limit, search_field=None, query=None):
         return {"items": [], "total": 0}
 
 
+@st.cache_data(ttl=300)
 def get_recommendations(query, top_k):
     try:
         r = requests.post(
@@ -95,6 +96,7 @@ def get_recommendations(query, top_k):
         return {"error": "Unable to connect to recommendation service."}
 
 
+@st.cache_data(show_spinner=False)
 def get_cover(isbn):
     if not isbn:
         return None
@@ -160,13 +162,11 @@ if st.session_state.page == "Browse":
                 col_img, col_text = st.columns([1, 3], gap="large")
 
                 with col_img:
-                    placeholder = st.empty()
                     cover = get_cover(book.get("isbn"))
                     if cover:
-                        with st.spinner("Loading cover…"):
-                            placeholder.image(cover, use_container_width=True)
+                        st.image(cover, use_container_width=True)
                     else:
-                        placeholder.markdown("🖼️ _No cover available_")
+                        st.markdown("🖼️ _No cover available_")
 
                 with col_text:
                     st.markdown(
@@ -245,7 +245,6 @@ else:
 
     results = st.session_state.get("rec_results")
 
-    # 🔒 ERROR HANDLING (CRITICAL FIX)
     if isinstance(results, dict) and "error" in results:
         st.warning(results["error"])
         st.stop()
@@ -255,11 +254,12 @@ else:
         st.stop()
 
     total = len(results)
-    total_pages = math.ceil(total / RECOMMEND_PAGE_SIZE)
+    page_size = min(RECOMMEND_PAGE_SIZE, total)
+    total_pages = math.ceil(total / page_size)
     page = st.session_state.rec_page
 
-    start = (page - 1) * RECOMMEND_PAGE_SIZE
-    end = start + RECOMMEND_PAGE_SIZE
+    start = (page - 1) * page_size
+    end = start + page_size
     page_items = results[start:end]
 
     for book in page_items:
@@ -267,13 +267,11 @@ else:
             col_img, col_text = st.columns([1, 3], gap="large")
 
             with col_img:
-                placeholder = st.empty()
                 cover = get_cover(book.get("isbn"))
                 if cover:
-                    with st.spinner("Loading cover…"):
-                        placeholder.image(cover, use_container_width=True)
+                    st.image(cover, use_container_width=True)
                 else:
-                    placeholder.markdown("🖼️ _No cover available_")
+                    st.markdown("🖼️ _No cover available_")
 
             with col_text:
                 st.markdown(

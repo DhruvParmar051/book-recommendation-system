@@ -5,7 +5,7 @@ pydantic
 
 # ML stack (PINNED & COMPATIBLE)
 numpy<2
-torch==2.2.2
+torch==2.2.2+cpu
 transformers==4.38.2
 sentence-transformers==2.6.1
 faiss-cpu==1.7.4
