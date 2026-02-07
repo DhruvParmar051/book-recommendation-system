@@ -2,8 +2,15 @@ fastapi
 uvicorn
 sqlalchemy
 pydantic
-sentence-transformers
-faiss-cpu
-numpy
+
+# ML stack (PINNED & COMPATIBLE)
+numpy<2
+torch==2.2.2
+transformers==4.38.2
+sentence-transformers==2.6.1
+faiss-cpu==1.7.4
+
 pandas
 datasets
+
+--extra-index-url https://download.pytorch.org/whl/cpu
