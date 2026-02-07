@@ -77,7 +77,6 @@ def get_books(skip, limit, search_field=None, query=None):
         return {"items": [], "total": 0}
 
 
-@st.cache_data(ttl=300)
 def get_recommendations(query, top_k):
     try:
         r = requests.post(
