@@ -96,7 +96,7 @@ def get_recommendations(query, top_k):
         return {"error": "Unable to connect to recommendation service."}
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=True)
 def get_cover(isbn):
     if not isbn:
         return None
