@@ -1,28 +1,72 @@
-# Book Recommendation System  
+# 📚 Book Recommendation System  
 ### End-to-End ETL Pipeline + Google Books Enrichment + FastAPI Service  
-**A Complete Data Engineering Project**
+A Complete Data Engineering Project
+
+---
+
+## Live Application
+
+Streamlit Deployment:  
+https://book-recommendation-system-dhruv-mahak.streamlit.app/
+
+---
+
+## Tech Stack
+
+### Backend & API
+- Python
+- FastAPI
+- Uvicorn
+- SQLAlchemy
+- SQLite
+
+### Data Engineering
+- Pandas
+- Multithreading
+- Google Books API
+- Deterministic ETL architecture
+- Hash-based stable identifiers
+
+### Recommendation Layer
+- Content-based filtering
+- Transformer-based feature engineering
+
+### Frontend
+- Streamlit
+- Streamlit Cloud deployment
+
+---
+
+## Recommendation System UI
+
+### Homepage / Search Interface
+![Recommendation UI 1](data/assets/recommendation_1.png)
+
+### Recommendation Results View
+![Recommendation UI 2](data/assets/recommendation_2.png)
 
 ---
 
 ## 1. Introduction & Motivation
 
-Modern recommendation systems rely on **clean, structured, and enriched data**.  
+Modern recommendation systems rely on clean, structured, and enriched data.  
 Raw library or OPAC datasets are often:
 
-- Inconsistent in schema
-- Noisy and duplicated
+- Inconsistent in schema  
+- Noisy and duplicated  
 - Missing semantic metadata (authors, categories, descriptions)
 
-This project addresses those challenges by building a **production-style data pipeline**
-that transforms raw CSV book records into a **queryable, enriched database**, and exposes
-the data through a **REST API** for downstream applications such as:
+This project addresses those challenges by building a production-style data pipeline
+that transforms raw CSV book records into a queryable, enriched database, and exposes
+the data through a REST API for downstream applications such as:
 
 - Book recommendation systems
 - Semantic search
 - Analytics dashboards
 - LLM-based applications
 
-The project follows **real-world data engineering principles**:
+The project follows real-world data engineering principles:
+
 - Clear separation of pipeline stages
 - Deterministic and resume-safe processing
 - CLI-driven configuration
@@ -46,43 +90,54 @@ This system provides:
 
 ## 3. Project Structure & Responsibilities
 
-Each folder has **one clear responsibility**, mirroring how production pipelines are organized.
+Each folder has one clear responsibility, mirroring how production pipelines are organized.
 
 ```
 book-recommendation-system/
 │
 ├── api/
-│   └── api.py
+│   └── main.py
 ├── data/
 │   ├── raw_data/
 │   ├── ingested_data/
 │   ├── clean_data/
 │   ├── enriched_data/
-│   └── storage_data/
+│   ├── storage_data/
+│   └── assets/
+│       ├── recommendation_1.png
+│       └── recommendation_2.png
+├── frontend/
+    ├── app.py
 ├── notebook/
-│   └── data.ipyb
+│   └── data.ipynb
 ├── pipeline/
-│   └── clean.py
-│   └── ingestion.py
-│   └── transformation.py
-│   └── pipeline_runner.py
-|   └── json_to_features.py
+│   ├── clean.py
+│   ├── ingestion.py
+│   ├── transformation.py
+│   ├── pipeline_runner.py
+│   └── json_to_features.py
+├── recommender/
+    ├── advanced_transformer_recommender.py
+    ├── build_faiss_index.py
+    ├── transformer_embedding_builder.py
+├── .dockerignore
+├── Dockerfile
 ├── storage/
 │   └── db.py
-├── recommender/
 └── README.md
 ```
 
 This structure ensures:
+
 - Clear data lineage
 - Easy debugging
 - Independent execution of each stage
 
 ---
 
-## 4. 🔽 Pipeline Architecture (End-to-End Flow)
+## 4. Pipeline Architecture (End-to-End Flow)
 
-The pipeline is **linear, deterministic, and restartable**.
+The pipeline is linear, deterministic, and restartable.
 
 ```
 ┌──────────────────────┐
@@ -135,7 +190,7 @@ The pipeline is **linear, deterministic, and restartable**.
 
 ## 5. Running the Complete Pipeline
 
-To execute **all ETL stages in order**, run:
+To execute all ETL stages in order, run:
 
 ```
 python pipeline/main.py
@@ -147,35 +202,32 @@ python pipeline/main.py
 data/storage_data/books.sqlite
 ```
 
-This database becomes the **single source of truth** for the API.
+This database becomes the single source of truth for the API.
 
 ---
-
 
 ## 6. Detailed Stage Explanations
 
----
-
 ### 6.1 Ingestion Stage
 
-**Goal:**  
-Convert raw, inconsistent CSV files into a **canonical schema**.
+Goal:  
+Convert raw, inconsistent CSV files into a canonical schema.
 
-**Key Design Choices**
+Key Design Choices:
 - No cleaning or deduplication (by design)
 - Schema-first approach
 - Fail-safe handling of missing columns
 
-**Why this matters:**  
+Why this matters:  
 Keeps ingestion lightweight and repeatable, deferring complex logic to later stages.
 
-**Default Run**
+Default Run:
 
 ```
 python pipeline/ingestion.py
 ```
 
-**Custom Input / Output**
+Custom Input / Output:
 
 ```
 python pipeline/ingestion.py \
@@ -187,10 +239,10 @@ python pipeline/ingestion.py \
 
 ### 6.2 Cleaning Stage
 
-**Goal:**  
+Goal:  
 Improve data quality and remove redundancy.
 
-**Operations**
+Operations:
 - Normalize text (lowercase, trim, whitespace fix)
 - Validate ISBNs (10/13-digit)
 - Drop records without titles
@@ -199,16 +251,16 @@ Improve data quality and remove redundancy.
   - Title + Author fallback
 - Generate stable `record_id` using hashing
 
-**Why this matters:**  
-Downstream enrichment and storage rely on **high-quality, unique records**.
+Why this matters:  
+Downstream enrichment and storage rely on high-quality, unique records.
 
-**Default Run**
+Default Run:
 
 ```
 python pipeline/clean.py
 ```
 
-**Custom Input / Output**
+Custom Input / Output:
 
 ```
 python pipeline/clean.py \
@@ -220,29 +272,26 @@ python pipeline/clean.py \
 
 ### 6.3 Transformation (Enrichment) Stage
 
-**Goal:**  
+Goal:  
 Add semantic metadata using Google Books API.
 
-**Enrichment Strategy**
+Enrichment Strategy:
 1. Search by ISBN (highest precision)
 2. Fallback to title + author search
 
-**Reliability Features**
+Reliability Features:
 - Multithreading with controlled concurrency
 - Hard API timeouts
 - Incremental atomic saves
 - Resume-safe after interruption
 
-**Why this matters:**  
-External APIs are unreliable—this design prevents data loss and freezes.
-
-**Default Run**
+Default Run:
 
 ```
 python pipeline/transformation.py
 ```
 
-**Custom Input / Output**
+Custom Input / Output:
 
 ```
 python pipeline/transformation.py \
@@ -254,27 +303,22 @@ python pipeline/transformation.py \
 
 ### 6.4 Storage Stage
 
-**Goal:**  
-Persist enriched records in a **query-efficient format**.
+Goal:  
+Persist enriched records in a query-efficient format.
 
-**Design Choices**
-- SQLite (simple, portable, zero-config)
+Design Choices:
+- SQLite (portable, zero-config)
 - Fixed schema
-- `INSERT OR IGNORE` to prevent duplicates
+- INSERT OR IGNORE to prevent duplicates
 - JSON serialization for list fields
 
-**Why SQLite?**
-- Ideal for small–medium datasets
-- Easy integration with FastAPI
-- No external service required
-
-**Default Run**
+Default Run:
 
 ```
 python storage/db.py
 ```
 
-**Custom Input / Output**
+Custom Input / Output:
 
 ```
 python storage/db.py \
@@ -286,54 +330,39 @@ python storage/db.py \
 
 ## 7. FastAPI Service
 
-The FastAPI layer provides **read-only access** to the final dataset.
-
-### Key Endpoints
-
-- `GET /books/` – Paginated book listing  
-- `GET /books/isbn/{isbn}` – ISBN lookup  
-- `GET /search/?q=term` – Full-text search  
-- `POST /sync/` – Trigger pipeline in background  
-
-### Start API Server
+Start API Server:
 
 ```
 uvicorn api.main:app --reload
 ```
 
-### Available Endpoints
+Available Endpoints:
 
-- `GET /books/`
-- `GET /books/isbn/{isbn}`
-- `GET /search/?q=term`
-- `POST /sync/` – trigger pipeline in background
+- GET /books/
+- GET /books/isbn/{isbn}
+- GET /search/?q=term
+- POST /sync/
 
-Swagger UI:
+Swagger UI:  
 http://localhost:8000/docs
 
 ---
 
 ## 8. Pipeline Statistics & Data Quality Report
 
-This section quantitatively demonstrates **how data quality improves at each stage**.
-All statistics were computed using an independent Jupyter Notebook (`.ipynb`)
-to keep analysis separate from pipeline logic.
-
----
-
 ### 8.1 Raw Data Statistics (Before ETL)
 
 | Metric | Value |
 |------|------:|
-| Total raw rows | **36,364** |
-| Unique titles | **30,906** |
-| Missing titles | **0** |
-| Missing ISBNs | **412** |
+| Total raw rows | 36,364 |
+| Unique titles | 30,906 |
+| Missing titles | 0 |
+| Missing ISBNs | 412 |
 
-**Observation**
+Observation:
 - Raw data already contains duplicates
 - ISBN coverage is high, but not complete
-- No missing titles, indicating good upstream data collection
+- No missing titles
 
 ---
 
@@ -341,16 +370,15 @@ to keep analysis separate from pipeline logic.
 
 | Metric | Value |
 |------|------:|
-| Total ingested rows | **36,364** |
-| Unique titles | **30,906** |
-| Unique ISBNs | **31,546** |
-| Missing ISBNs | **412** |
-| Missing year values | **170** |
+| Total ingested rows | 36,364 |
+| Unique titles | 30,906 |
+| Unique ISBNs | 31,546 |
+| Missing ISBNs | 412 |
+| Missing year values | 170 |
 
-**Observation**
+Observation:
 - Ingestion preserves row count exactly
 - No records are dropped
-- Schema standardization does not alter data semantics
 
 ---
 
@@ -358,70 +386,65 @@ to keep analysis separate from pipeline logic.
 
 | Metric | Value |
 |------|------:|
-| Total cleaned rows | **31,946** |
-| Unique record_id | **31,946** |
-| Unique ISBNs | **26,871** |
-| Missing ISBNs | **5,075** |
-| Duplicate records removed | **4,418** |
+| Total cleaned rows | 31,946 |
+| Unique record_id | 31,946 |
+| Unique ISBNs | 26,871 |
+| Missing ISBNs | 5,075 |
+| Duplicate records removed | 4,418 |
 
 #### Deduplication Breakdown
 
 | Category | Count |
 |-------|------:|
-| ISBN-based books | **26,871** |
-| Non-ISBN books | **5,075** |
+| ISBN-based books | 26,871 |
+| Non-ISBN books | 5,075 |
 
-**Observation**
+Observation:
 - Cleaning removes ~12% duplicate/noisy records
-- ISBN-based deduplication is dominant
-- Non-ISBN books are preserved using title+author logic
+- Non-ISBN books preserved using fallback logic
 
 ---
 
-### 8.4 Enrichment (Google Books API) Statistics
+### 8.4 Enrichment Statistics
 
 | Metric | Value |
 |------|------:|
-| Total processed books | **31,946** |
-| Successfully enriched | **9,221** |
-| Missing enrichment | **22,725** |
-| Enrichment success rate | **28.86%** |
+| Total processed books | 31,946 |
+| Successfully enriched | 9,221 |
+| Missing enrichment | 22,725 |
+| Enrichment success rate | 28.86% |
 
-#### Metadata Coverage (FOUND records)
+### 8.5 Summary Length Statistics
+
+| Metric | Value |
+|--------|------:|
+| Total books | 7,313 |
+| Minimum length | 1 word |
+| Maximum length | 2,585 words |
+| Average length | 128.30 words |
+
+### 8.6 Metadata Coverage (FOUND records):
 
 | Field | Available |
 |-----|---------:|
-| Authors | **8,348** |
-| Subjects | **8,497** |
-| Summary | **7,313** |
-| Publisher | **6,708** |
-
-**Observation**
-- ISBN-based enrichment significantly improves success rate
-- Missing records are expected due to:
-  - Old publications
-  - Regional books
-  - Limited Google Books coverage
-- Pipeline safely records failures without data loss
+| Authors | 8,348 |
+| Subjects | 8,497 |
+| Summary | 7,313 |
+| Publisher | 6,708 |
 
 ---
 
-### 8.5 Final Dataset Statistics (Post-Storage)
+### 8.7 Final Dataset Statistics
 
 | Metric | Value |
 |------|------:|
-| Final books stored | **31,895** |
-| Unique titles | **30,246** |
-| Unique ISBNs | **26,026** |
-
-**Observation**
-- Final dataset is consistent and analytics-ready
-- Duplicate-safe inserts prevent data corruption
-- Slight reduction due to unique `book_key` constraint
+| Final books stored | 31,895 |
+| Unique titles | 30,246 |
+| Unique ISBNs | 26,026 |
 
 ---
 
-### 8.6 Pipeline Row Count Summary
+### 8.8 Pipeline Row Count Summary
 
 | Stage | Rows |
 |------|-----:|
@@ -430,13 +453,9 @@ to keep analysis separate from pipeline logic.
 | Cleaned | 31,946 |
 | Enriched | 31,946 |
 
-**Key Insight**
-> Each pipeline stage has a **measurable, justified impact**, proving correctness
-> and intentional data transformation rather than accidental data loss.
-
 ---
 
-## 9. Data Dictionary (Core Fields)
+## 9. Data Dictionary
 
 | Field | Description |
 |------|------------|
@@ -444,7 +463,7 @@ to keep analysis separate from pipeline logic.
 | book_key | Unique composite key |
 | status | FOUND / MISSING |
 | title | Normalized title |
-| authors | Author list (JSON) |
+| authors | JSON list |
 | isbn | Valid ISBN |
 | year | Publication year |
 | subjects | Category list |
@@ -457,24 +476,22 @@ to keep analysis separate from pipeline logic.
 
 This project emphasizes:
 
-- **Separation of concerns**
-- **Reproducibility**
-- **Operational safety**
-- **Explainability**
-- **Real-world engineering patterns**
+- Separation of concerns
+- Reproducibility
+- Operational safety
+- Explainability
+- Real-world engineering patterns
 
 ---
 
 ## 11. Conclusion
 
-This project demonstrates a **complete, production-style data pipeline**:
+This project demonstrates a complete production-style data pipeline:
 
-- Quantifiable data-quality improvements  
-- Deterministic ETL stages  
-- Resume-safe enrichment  
-- Persistent storage  
-- API-based data access  
+- Quantifiable data-quality improvements
+- Deterministic ETL stages
+- Resume-safe enrichment
+- Persistent storage
+- API-based data access
 
-It forms a strong foundation for **semantic search and recommendation systems**.
-
----
+It forms a strong foundation for semantic search and recommendation systems.
